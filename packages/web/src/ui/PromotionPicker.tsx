@@ -1,4 +1,4 @@
-import { PIECE_TYPE_NAMES, type Color, type LegalMove } from '../engine';
+import { PIECE_TYPE_NAMES, type Color, type LegalMove } from '@hnb/core';
 
 type PromotionTarget = NonNullable<LegalMove['promotion']>;
 

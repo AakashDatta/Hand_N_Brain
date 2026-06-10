@@ -1,4 +1,4 @@
-import { PIECE_TYPE_NAMES, type LegalMove, type PieceType } from '../engine';
+import { PIECE_TYPE_NAMES, type LegalMove, type PieceType } from '@hnb/core';
 
 /**
  * The Hand's control: shows the piece type the Brain named and lists the legal

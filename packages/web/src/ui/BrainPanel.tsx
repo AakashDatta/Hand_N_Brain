@@ -1,4 +1,4 @@
-import { PIECE_TYPE_NAMES, type PieceType } from '../engine';
+import { PIECE_TYPE_NAMES, type PieceType } from '@hnb/core';
 
 const PIECE_GLYPHS: Record<PieceType, string> = {
   p: '♟',

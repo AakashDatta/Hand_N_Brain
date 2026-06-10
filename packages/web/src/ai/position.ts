@@ -1,5 +1,5 @@
 import { Chess, type Square } from 'chess.js';
-import type { PieceType } from '../engine';
+import type { PieceType } from '@hnb/core';
 
 /**
  * The piece type standing on a square, read authoritatively via chess.js.

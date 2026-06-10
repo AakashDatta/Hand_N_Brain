@@ -2,7 +2,7 @@
  * Pure helpers for speaking UCI to Stockfish. Kept free of Worker/DOM
  * dependencies so they can be unit-tested directly.
  */
-import type { LegalMove } from '../engine';
+import type { LegalMove } from '@hnb/core';
 
 /** A move in UCI long algebraic notation parts, e.g. e2->e4 or a7->a8=q. */
 export interface UciMove {

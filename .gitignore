@@ -13,4 +13,4 @@ dist/
 *.tsbuildinfo
 
 # Stockfish WASM engine (staged from node_modules by scripts/copy-stockfish.mjs)
-/public/engine/
+/packages/web/public/engine/

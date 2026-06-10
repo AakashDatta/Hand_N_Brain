@@ -1,4 +1,4 @@
-import type { Color } from '../engine';
+import type { Color } from '@hnb/core';
 
 /**
  * Locate a king's square from a FEN string, used purely for the UI's

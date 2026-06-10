@@ -351,6 +351,60 @@ body {
   align-items: center;
 }
 
+/* --- Online play --- */
+.setup__online {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.name-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.name-row input[type='text'] {
+  background: var(--panel-bg-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.roster__row {
+  display: grid;
+  grid-template-columns: 8.5em 1fr;
+  gap: 8px;
+  font-size: 0.92rem;
+}
+
+.roster__seat {
+  color: var(--text-dim);
+}
+
+.roster__name--offline {
+  color: #ff8f8f;
+  font-style: italic;
+}
+
+.error-text {
+  color: #ff8f8f;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
 /* --- Promotion modal --- */
 .modal-backdrop {
   position: fixed;

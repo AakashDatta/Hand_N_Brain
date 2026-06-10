@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
-import { HandBrainGame, Phase } from '../engine';
+import { HandBrainGame, Phase } from '@hnb/core';
 import { pieceTypeAtSquare } from './position';
 import {
   buildGoCommand,

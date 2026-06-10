@@ -4,7 +4,7 @@
  * just seat configurations, so a single orchestrator covers "hot-seat",
  * "vs AI", "AI Brain teammate", and "AI Hand teammate".
  */
-import { Phase, Role, type Color, type GameSnapshot } from '../engine';
+import { Phase, Role, type Color, type GameSnapshot } from '@hnb/core';
 
 export type SeatController = 'human' | 'ai';
 

@@ -4,7 +4,7 @@ import {
   type GameSnapshot,
   type LegalMove,
   type PieceType,
-} from '../engine';
+} from '@hnb/core';
 
 /**
  * React binding for {@link HandBrainGame}.

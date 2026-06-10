@@ -11,10 +11,14 @@
 import { copyFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const sourceDir = join(root, 'node_modules', 'stockfish', 'bin');
-const targetDir = join(root, 'public', 'engine');
+const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// Resolve through Node so this works regardless of npm workspace hoisting.
+const require = createRequire(import.meta.url);
+const sourceDir = join(dirname(require.resolve('stockfish/package.json')), 'bin');
+const targetDir = join(packageRoot, 'public', 'engine');
 
 // The .js worker script derives its sibling .wasm path from its own URL, so
 // both files must keep this exact name and live in the same directory.

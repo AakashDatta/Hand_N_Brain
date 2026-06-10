@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Color } from '../engine';
+import type { Color } from '@hnb/core';
 import {
   GAME_MODES,
   buildConfig,
@@ -9,13 +9,16 @@ import {
 import { MAX_DIFFICULTY, MIN_DIFFICULTY } from '../ai/uci';
 
 /**
- * Pre-game setup: pick a mode (a preset over the seat model), your color,
- * and the AI difficulty. Hot-seat needs neither color nor difficulty.
+ * Pre-game setup: pick a local mode (a preset over the seat model), your
+ * color, and the AI difficulty — or head to online play. Hot-seat needs
+ * neither color nor difficulty.
  */
 export function GameSetup({
   onStart,
+  onPlayOnline,
 }: {
   onStart: (config: GameConfig) => void;
+  onPlayOnline: () => void;
 }) {
   const [mode, setMode] = useState<GameMode>('hotseat');
   const [color, setColor] = useState<Color>('w');
@@ -85,6 +88,16 @@ export function GameSetup({
       >
         Start game
       </button>
+
+      <div className="setup__online">
+        <h2 className="setup__heading">Play online</h2>
+        <p className="panel__hint">
+          Queue as Hand, Brain, or either; the server forms 2v2 teams.
+        </p>
+        <button type="button" className="primary-button" onClick={onPlayOnline}>
+          Go online
+        </button>
+      </div>
     </div>
   );
 }

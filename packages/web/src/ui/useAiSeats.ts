@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Role, type LegalMove } from '../engine';
+import { Role, type LegalMove } from '@hnb/core';
 import { StockfishEngine } from '../ai/StockfishEngine';
 import { legalMoveToUci, moveToUci } from '../ai/uci';
 import { pieceTypeAtSquare } from '../ai/position';

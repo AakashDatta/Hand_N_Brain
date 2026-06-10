@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { HandBrainGame } from '../engine';
-import { Role } from '../engine';
+import { HandBrainGame } from '@hnb/core';
+import { Role } from '@hnb/core';
 import {
   actorFor,
   buildConfig,

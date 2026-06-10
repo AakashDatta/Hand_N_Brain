@@ -2,11 +2,9 @@ import {
   GameOverReason,
   PIECE_TYPE_NAMES,
   Phase,
-  Role,
   type Color,
   type GameSnapshot,
-} from '../engine';
-import type { Actor } from '../game/seats';
+} from '@hnb/core';
 
 const COLOR_NAMES: Record<Color, string> = { w: 'White', b: 'Black' };
 
@@ -20,15 +18,16 @@ const GAME_OVER_TEXT: Record<GameOverReason, string> = {
 };
 
 /**
- * Shows whose turn it is, which role must act (and whether it is an AI seat),
- * and any check/game-over state.
+ * Shows whose turn it is, which role must act, and any check/game-over state.
+ * The acting role is implied by the protocol phase; `tag` adds caller-specific
+ * context such as "(AI)" or "(you)".
  */
 export function StatusBanner({
   snapshot,
-  actor,
+  tag,
 }: {
   snapshot: GameSnapshot;
-  actor: Actor | null;
+  tag?: string;
 }) {
   if (snapshot.phase === Phase.GameOver && snapshot.result) {
     const { reason, winner } = snapshot.result;
@@ -45,20 +44,17 @@ export function StatusBanner({
   }
 
   const side = COLOR_NAMES[snapshot.turn];
-  const roleLabel = actor?.role === Role.Brain ? 'Brain' : 'Hand';
-  const aiTag = actor?.controller === 'ai' ? ' (AI)' : '';
-  const action =
-    actor?.role === Role.Brain
-      ? 'name a piece type'
-      : `move a ${PIECE_TYPE_NAMES[
-          snapshot.selectedPieceType!
-        ].toLowerCase()}`;
+  const isBrainPhase = snapshot.phase === Phase.AwaitingBrain;
+  const roleLabel = isBrainPhase ? 'Brain' : 'Hand';
+  const action = isBrainPhase
+    ? 'name a piece type'
+    : `move a ${PIECE_TYPE_NAMES[snapshot.selectedPieceType!].toLowerCase()}`;
 
   return (
     <div className={`banner banner--${snapshot.turn === 'w' ? 'white' : 'black'}`}>
       <span className="banner__title">
         {side} · {roleLabel}
-        {aiTag} to {action}
+        {tag ? ` ${tag}` : ''} to {action}
       </span>
       {snapshot.inCheck && <span className="banner__check">Check!</span>}
     </div>
