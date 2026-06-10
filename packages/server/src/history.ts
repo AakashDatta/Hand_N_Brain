@@ -29,6 +29,16 @@ export class MatchLog {
     }
   }
 
+  /** Replace the log with persisted records (oldest first). */
+  hydrate(records: MatchRecord[]): void {
+    this.records = records.slice(-MAX_RECORDS);
+  }
+
+  /** All retained records, oldest first — for persistence snapshots. */
+  all(): MatchRecord[] {
+    return this.records;
+  }
+
   /** A player's most recent finished matches, newest first. */
   forPlayer(playerId: string, limit = 20): MatchHistoryEntry[] {
     const entries: MatchHistoryEntry[] = [];

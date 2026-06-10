@@ -28,6 +28,7 @@ import {
 import { Match, MatchActionError } from './match';
 import { RatingBook } from './ratings';
 import { MatchLog } from './history';
+import type { Store } from './store';
 
 export interface Transport {
   send(playerId: string, message: ServerMessage): void;
@@ -44,6 +45,8 @@ interface Player {
 export interface LobbyOptions {
   /** How long a disconnected player's team survives before forfeiting. */
   abandonTimeoutMs?: number;
+  /** Durable storage for identities, ratings, and history. Omit for none. */
+  store?: Store;
 }
 
 const DEFAULT_ABANDON_TIMEOUT_MS = 60_000;
@@ -57,6 +60,7 @@ export class Lobby {
   private readonly abandonTimeoutMs: number;
   private readonly ratings = new RatingBook();
   private readonly matchLog = new MatchLog();
+  private readonly store: Store | undefined;
 
   constructor(
     private readonly transport: Transport,
@@ -64,6 +68,43 @@ export class Lobby {
   ) {
     this.abandonTimeoutMs =
       options.abandonTimeoutMs ?? DEFAULT_ABANDON_TIMEOUT_MS;
+    this.store = options.store;
+    this.hydrateFromStore();
+  }
+
+  /** Restore persisted identities, ratings, and history on startup. */
+  private hydrateFromStore(): void {
+    const snapshot = this.store?.load();
+    if (!snapshot) return;
+
+    for (const persisted of snapshot.players) {
+      const player: Player = {
+        id: persisted.id,
+        token: persisted.token,
+        name: persisted.name,
+        connected: false,
+        matchId: null, // live matches are never persisted
+      };
+      this.playersById.set(player.id, player);
+      this.playersByToken.set(player.token, player);
+      this.ratings.hydrate(player.id, persisted.ratings);
+    }
+    this.matchLog.hydrate(snapshot.matches);
+  }
+
+  /** Persist the durable subset of state (no-op when no store is configured). */
+  private persist(): void {
+    if (!this.store) return;
+    this.store.save({
+      version: 1,
+      players: [...this.playersById.values()].map((player) => ({
+        id: player.id,
+        token: player.token,
+        name: player.name,
+        ratings: this.ratings.ratingsOf(player.id),
+      })),
+      matches: this.matchLog.all(),
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -87,7 +128,11 @@ export class Lobby {
     const existing = token ? this.playersByToken.get(token) : undefined;
     const player = existing ?? this.createPlayer();
     if (name) {
-      player.name = sanitizeName(name) ?? player.name;
+      const clean = sanitizeName(name);
+      if (clean && clean !== player.name) {
+        player.name = clean;
+        this.persist(); // remember the name a client introduced itself with
+      }
     }
     player.connected = true;
     bindConnection?.(player.id);
@@ -152,6 +197,7 @@ export class Lobby {
         return;
       case 'set-name':
         player.name = message.name;
+        this.persist();
         return;
       case 'queue-join':
         this.handleQueueJoin(player, message.role);
@@ -314,6 +360,7 @@ export class Lobby {
       this.cancelAbandonTimer(id);
     }
     this.matches.delete(match.id);
+    this.persist(); // ratings + history changed
   }
 
   /** Top rated players for one role, best first. */
@@ -398,6 +445,7 @@ export class Lobby {
     // memory-only); Phase 3 moves identity to the database.
     this.playersById.set(id, player);
     this.playersByToken.set(player.token, player);
+    this.persist(); // remember the new identity + token
     return player;
   }
 

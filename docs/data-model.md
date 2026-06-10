@@ -98,3 +98,16 @@ PK: (game_id, ply).
 | moves                | `HandBrainGame` history (SAN) inside the match       |
 
 The matchmaking queue is transient in both phases and is never persisted.
+
+## Current persistence (JSON-file store)
+
+The server already persists the durable subset of this model — players (id,
+token, name, both role ratings) and finished-match history — through a
+`Store` seam (`packages/server/src/store.ts`), defaulting to a single atomic
+JSON file. Live matches, the queue, and socket connections are deliberately
+not persisted (a restart is treated as the players having disconnected).
+
+The Postgres/Prisma implementation is a drop-in `Store`: the tables above map
+directly onto `PersistedState` (`users` + `ratings` ⇢ `players[].ratings`,
+`games`/`game_players`/`moves` ⇢ `matches[]`), so swapping storage backends
+does not touch the lobby, matchmaking, or rating logic.

@@ -24,8 +24,9 @@ engine's own top choice. Regenerate with `npm run demo:gif -w @hnb/web`.*
 | 0 | Core turn-protocol engine + local hot-seat | ✅ |
 | 1 | Stockfish AI: opponent, AI-Brain teammate, AI-Hand teammate | ✅ |
 | 2 | Online 2v2 multiplayer with an authoritative server | ✅ |
-| 3 | Dual Hand/Brain Elo, rating-aware matchmaking, history, leaderboards | ✅ (in-memory) |
-| next | Postgres persistence (schema in `docs/data-model.md`), accounts/auth, duo-queue, spectating | planned |
+| 3 | Dual Hand/Brain Elo, rating-aware matchmaking, history, leaderboards | ✅ |
+| 3+ | Durable persistence of identities/ratings/history (JSON-file store behind a swappable seam) | ✅ |
+| next | Postgres/Prisma store (schema in `docs/data-model.md`), accounts/auth, duo-queue, spectating | planned |
 
 Full chess rules (castling, en passant, promotion, check, checkmate,
 stalemate, draws) are correct because rule logic is delegated entirely to
@@ -171,6 +172,13 @@ Dockerfile above. One-time setup:
    reads `render.yaml` and creates the `hand-n-brain` web service.
 3. Pick the branch to track (e.g. `claude/hand-brain-chess-engine-acdtwv`, or
    `main` once merged) and deploy.
+
+Player identities, ratings, and match history are persisted to a JSON file
+(`data/hnb.json` by default; set `HNB_DATA_FILE` to relocate, or `""` to
+disable) so they survive restarts within an instance. The store is a swappable
+seam (`packages/server/src/store.ts`) — the Postgres/Prisma implementation in
+`docs/data-model.md` drops in without touching the lobby. For durability across
+Render's ephemeral redeploys, point `HNB_DATA_FILE` at a mounted disk.
 
 Render injects `$PORT` and serves WebSockets over the same port, so no extra
 configuration is needed. After the first deploy you get an `https://…onrender.com`

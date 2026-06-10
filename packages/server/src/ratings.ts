@@ -39,6 +39,11 @@ export class RatingBook {
     return ratings;
   }
 
+  /** Load a player's ratings from persisted state (overwrites any current). */
+  hydrate(playerId: string, ratings: PlayerRatings): void {
+    this.byPlayer.set(playerId, ratings);
+  }
+
   /** The rating relevant to one role (what matchmaking pairs on). */
   relevantRating(playerId: string, role: Role): number {
     const ratings = this.ratingsOf(playerId);
