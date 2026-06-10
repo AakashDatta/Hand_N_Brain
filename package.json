@@ -7,10 +7,15 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @hnb/web",
+    "dev": "concurrently --names server,web --prefix-colors blue,green \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:web": "npm run dev -w @hnb/web",
     "dev:server": "npm run dev -w @hnb/server",
     "build": "npm run build --workspaces --if-present",
+    "start": "npm run start -w @hnb/server",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

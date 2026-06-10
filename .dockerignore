@@ -1,0 +1,6 @@
+node_modules
+**/node_modules
+**/dist
+packages/web/public/engine
+.git
+*.log

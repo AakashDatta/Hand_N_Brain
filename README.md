@@ -123,15 +123,39 @@ Requires Node 18+.
 
 ```bash
 npm install
-npm run dev          # web client at http://localhost:5173 (local play works alone)
-npm run dev:server   # game server at :8080 — needed for online play (dev proxies /ws)
+npm run dev          # ▶ play-test: boots BOTH the server and web client
+                     #   open http://localhost:5173 (one URL — /ws is proxied)
 npm test             # all workspace test suites
 npm run build        # typecheck + production build
 ```
 
-Production: `npm run build`, then `npm run start -w @hnb/server` serves the
-built web app and the WebSocket endpoint from one process (port `$PORT`,
-default 8080).
+`npm run dev` runs the game server and the Vite client together (labeled
+`server`/`web`). Local hot-seat and all three AI modes work immediately; for
+online play, open a second browser tab to fill more seats — you can play all
+four roles yourself across tabs. To run just one side: `npm run dev:web` or
+`npm run dev:server`.
+
+### Play-testing the production build
+
+```bash
+npm run build
+npm start            # one process serves the web app + WebSocket on $PORT (default 8080)
+```
+
+### Deploy (play-test from anywhere, e.g. your phone)
+
+The repo ships a host-agnostic multi-stage `Dockerfile` that builds every
+workspace and runs the single-process server (web app + WebSocket on `$PORT`).
+It runs on any container host — Fly.io, Render, Railway, Cloud Run, a VPS:
+
+```bash
+docker build -t hand-n-brain .
+docker run -p 8080:8080 hand-n-brain   # → http://localhost:8080
+```
+
+Point a host at this Dockerfile with auto-deploy-on-push and play-testing
+becomes part of the cycle: push to the branch → the host rebuilds → open the
+URL on any device.
 
 ## How to play
 
