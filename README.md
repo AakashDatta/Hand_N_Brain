@@ -157,6 +157,21 @@ Point a host at this Dockerfile with auto-deploy-on-push and play-testing
 becomes part of the cycle: push to the branch → the host rebuilds → open the
 URL on any device.
 
+**Render (preconfigured).** `render.yaml` is a Render Blueprint for the
+Dockerfile above. One-time setup:
+
+1. Push this repo to GitHub (already done for the feature branch).
+2. In the Render dashboard → **New → Blueprint**, connect the repo. Render
+   reads `render.yaml` and creates the `hand-n-brain` web service.
+3. Pick the branch to track (e.g. `claude/hand-brain-chess-engine-acdtwv`, or
+   `main` once merged) and deploy.
+
+Render injects `$PORT` and serves WebSockets over the same port, so no extra
+configuration is needed. After the first deploy you get an `https://…onrender.com`
+URL — open it on your phone, share it to fill the other seats, and every push
+to the tracked branch redeploys automatically. (Free instances sleep when
+idle; the first hit after a nap has a short cold start.)
+
 ## How to play
 
 Pick a mode (or go online) on the setup screen, then on each turn:

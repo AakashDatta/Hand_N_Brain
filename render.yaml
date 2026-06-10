@@ -1,0 +1,17 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploys the single-process server (web app + WebSocket on one port) from the
+# repo's Dockerfile, and auto-redeploys on every push to the connected branch.
+# Render injects $PORT and routes to it; the server reads process.env.PORT, and
+# WebSockets work over the same port, so no extra config is needed.
+services:
+  - type: web
+    name: hand-n-brain
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    autoDeploy: true
+    # The default branch is used unless you pick another when connecting the
+    # Blueprint. To track the feature branch, set it here or in the dashboard:
+    # branch: claude/hand-brain-chess-engine-acdtwv
