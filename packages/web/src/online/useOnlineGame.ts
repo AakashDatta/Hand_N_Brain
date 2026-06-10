@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   GameSnapshot,
+  LeaderboardEntry,
   LegalMove,
+  MatchHistoryEntry,
   MatchOutcome,
   MatchPlayerInfo,
   PieceType,
+  PlayerRatings,
   QueueRole,
+  RatingState,
+  Role,
   SeatAssignment,
 } from '@hnb/core';
 import { GameSocket, type ConnectionStatus } from './connection';
@@ -30,6 +35,12 @@ export interface OnlineState {
   } | null;
   /** Most recent server-rejected action, for display. */
   lastError: string | null;
+  /** My two role ratings, kept fresh by welcome and rating updates. */
+  ratings: PlayerRatings | null;
+  /** My rating change from the most recently finished match. */
+  lastRatingUpdate: { role: Role; before: RatingState; after: RatingState } | null;
+  leaderboard: { hand: LeaderboardEntry[]; brain: LeaderboardEntry[] } | null;
+  history: MatchHistoryEntry[] | null;
 }
 
 export interface OnlineController {
@@ -46,6 +57,8 @@ export interface OnlineController {
   resign: () => void;
   /** Dismiss a finished match and return to the queue screen. */
   leaveFinishedMatch: () => void;
+  fetchLeaderboard: () => void;
+  fetchProfile: () => void;
 }
 
 const INITIAL_STATE: OnlineState = {
@@ -55,6 +68,10 @@ const INITIAL_STATE: OnlineState = {
   queuedAs: null,
   match: null,
   lastError: null,
+  ratings: null,
+  lastRatingUpdate: null,
+  leaderboard: null,
+  history: null,
 };
 
 export function useOnlineGame(initialName?: string): OnlineController {
@@ -82,6 +99,7 @@ export function useOnlineGame(initialName?: string): OnlineController {
             ...prev,
             playerId: message.playerId,
             name: message.name,
+            ratings: message.ratings,
             // If no active match, any stale match view is over.
             match: message.activeMatchId ? prev.match : null,
           }));
@@ -96,6 +114,7 @@ export function useOnlineGame(initialName?: string): OnlineController {
           setState((prev) => ({
             ...prev,
             queuedAs: null,
+            lastRatingUpdate: null,
             match: {
               matchId: message.matchId,
               mySeat: message.yourSeat,
@@ -139,6 +158,35 @@ export function useOnlineGame(initialName?: string): OnlineController {
               },
             };
           });
+          return;
+        case 'rating-update':
+          setState((prev) => ({
+            ...prev,
+            lastRatingUpdate: {
+              role: message.role,
+              before: message.before,
+              after: message.after,
+            },
+            ratings: prev.ratings
+              ? {
+                  ...prev.ratings,
+                  [message.role === 'HAND' ? 'hand' : 'brain']: message.after,
+                }
+              : prev.ratings,
+          }));
+          return;
+        case 'leaderboard':
+          setState((prev) => ({
+            ...prev,
+            leaderboard: { hand: message.hand, brain: message.brain },
+          }));
+          return;
+        case 'profile':
+          setState((prev) => ({
+            ...prev,
+            ratings: message.ratings,
+            history: message.history,
+          }));
           return;
         case 'error-message':
           setState((prev) => ({ ...prev, lastError: message.message }));
@@ -189,6 +237,8 @@ export function useOnlineGame(initialName?: string): OnlineController {
         setState((prev) =>
           prev.match?.outcome ? { ...prev, match: null } : prev,
         ),
+      fetchLeaderboard: () => send((s) => s.send({ type: 'get-leaderboard' })),
+      fetchProfile: () => send((s) => s.send({ type: 'get-profile' })),
     } satisfies OnlineController;
   }, [state]);
 }

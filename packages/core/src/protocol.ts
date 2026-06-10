@@ -9,9 +9,36 @@
  */
 import type { Color, GameOverReason, GameSnapshot, PieceType } from './types';
 import { Role } from './types';
+import type { RatingState } from './elo';
 
 /** A queueing player's role preference. */
 export type QueueRole = 'hand' | 'brain' | 'either';
+
+/** A player's two independent role ratings. */
+export interface PlayerRatings {
+  hand: RatingState;
+  brain: RatingState;
+}
+
+/** One row of a role leaderboard. */
+export interface LeaderboardEntry {
+  playerId: string;
+  name: string;
+  rating: number;
+  gamesPlayed: number;
+}
+
+/** A finished match as it appears in someone's history. */
+export interface MatchHistoryEntry {
+  matchId: string;
+  endedAt: number;
+  /** This player's seat in that match. */
+  seat: SeatAssignment;
+  outcome: MatchOutcome;
+  opponents: string[];
+  teammate: string;
+  moveCount: number;
+}
 
 /** Which seat a player occupies in a match. */
 export interface SeatAssignment {
@@ -53,7 +80,9 @@ export type ClientMessage =
       to: string;
       promotion?: Exclude<PieceType, 'p' | 'k'>;
     }
-  | { type: 'resign'; matchId: string };
+  | { type: 'resign'; matchId: string }
+  | { type: 'get-leaderboard' }
+  | { type: 'get-profile' };
 
 // ---------------------------------------------------------------------------
 // Server -> client
@@ -68,6 +97,7 @@ export type ServerMessage =
       name: string;
       /** Set when the player reconnected while a match was in progress. */
       activeMatchId: string | null;
+      ratings: PlayerRatings;
     }
   | { type: 'queue-status'; queued: boolean; role?: QueueRole }
   | {
@@ -88,6 +118,26 @@ export type ServerMessage =
       matchId: string;
       playerId: string;
       connected: boolean;
+    }
+  | {
+      /** Sent to each participant after a rated match: their role rating change. */
+      type: 'rating-update';
+      matchId: string;
+      role: Role;
+      before: RatingState;
+      after: RatingState;
+    }
+  | {
+      type: 'leaderboard';
+      hand: LeaderboardEntry[];
+      brain: LeaderboardEntry[];
+    }
+  | {
+      type: 'profile';
+      playerId: string;
+      name: string;
+      ratings: PlayerRatings;
+      history: MatchHistoryEntry[];
     }
   | { type: 'error-message'; code: ErrorCode; message: string };
 
@@ -205,6 +255,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (!isNonEmptyString(value.matchId)) return null;
       return { type: 'resign', matchId: value.matchId };
     }
+    case 'get-leaderboard':
+      return { type: 'get-leaderboard' };
+    case 'get-profile':
+      return { type: 'get-profile' };
     default:
       return null;
   }

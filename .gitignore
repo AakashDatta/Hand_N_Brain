@@ -14,3 +14,4 @@ dist/
 
 # Stockfish WASM engine (staged from node_modules by scripts/copy-stockfish.mjs)
 /packages/web/public/engine/
+/public/engine/

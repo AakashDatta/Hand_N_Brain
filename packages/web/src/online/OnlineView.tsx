@@ -1,5 +1,12 @@
-import { useState } from 'react';
-import { Phase, Role, type MatchPlayerInfo, type QueueRole } from '@hnb/core';
+import { useEffect, useState } from 'react';
+import {
+  Phase,
+  Role,
+  type LeaderboardEntry,
+  type MatchHistoryEntry,
+  type MatchPlayerInfo,
+  type QueueRole,
+} from '@hnb/core';
 import { useOnlineGame } from './useOnlineGame';
 import { PlaySurface } from '../ui/PlaySurface';
 import { BrainPanel } from '../ui/BrainPanel';
@@ -57,9 +64,26 @@ function QueueScreen({
   const { state } = online;
   const [draftName, setDraftName] = useState<string | null>(null);
 
+  // Refresh my profile (ratings + history) and the leaderboard whenever the
+  // queue screen appears — including after returning from a match.
+  useEffect(() => {
+    online.fetchProfile();
+    online.fetchLeaderboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="setup">
       <h2 className="setup__heading">Online play</h2>
+
+      {state.ratings && (
+        <p className="panel__hint">
+          Your ratings — Hand: <strong>{state.ratings.hand.rating}</strong> (
+          {state.ratings.hand.gamesPlayed} games) · Brain:{' '}
+          <strong>{state.ratings.brain.rating}</strong> (
+          {state.ratings.brain.gamesPlayed} games)
+        </p>
+      )}
 
       <div className="setup__options">
         <label className="setup__field setup__slider">
@@ -121,9 +145,73 @@ function QueueScreen({
 
       {state.lastError && <p className="error-text">{state.lastError}</p>}
 
+      <div className="boards">
+        {state.leaderboard && (
+          <>
+            <LeaderboardPanel title="Top Hands" entries={state.leaderboard.hand} />
+            <LeaderboardPanel title="Top Brains" entries={state.leaderboard.brain} />
+          </>
+        )}
+        {state.history && state.history.length > 0 && (
+          <HistoryPanel history={state.history} />
+        )}
+      </div>
+
       <button type="button" className="link-button reset-link" onClick={onExit}>
         ← Back to game modes
       </button>
+    </div>
+  );
+}
+
+function LeaderboardPanel({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: LeaderboardEntry[];
+}) {
+  return (
+    <div className="panel">
+      <h2 className="panel__title">{title}</h2>
+      {entries.length === 0 ? (
+        <p className="panel__hint">No rated games yet.</p>
+      ) : (
+        <ol className="board-list">
+          {entries.map((entry) => (
+            <li key={entry.playerId}>
+              <span className="board-list__name">{entry.name}</span>
+              <span className="board-list__rating">
+                {entry.rating} ({entry.gamesPlayed})
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function HistoryPanel({ history }: { history: MatchHistoryEntry[] }) {
+  return (
+    <div className="panel">
+      <h2 className="panel__title">Recent matches</h2>
+      <ul className="board-list">
+        {history.slice(0, 8).map((entry) => {
+          const won = entry.outcome.winner === entry.seat.color;
+          const result =
+            entry.outcome.winner === null ? 'Draw' : won ? 'Won' : 'Lost';
+          const role = entry.seat.role === Role.Brain ? 'Brain' : 'Hand';
+          return (
+            <li key={entry.matchId}>
+              <span className="board-list__name">
+                {result} as {role} with {entry.teammate}
+              </span>
+              <span className="board-list__rating">{entry.moveCount} moves</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -179,6 +267,13 @@ function OnlineMatch({
               <h2 className="panel__title">
                 {describeOutcome(match.outcome, mySeat.color)}
               </h2>
+              {state.lastRatingUpdate && (
+                <p className="panel__hint">
+                  {state.lastRatingUpdate.role === Role.Brain ? 'Brain' : 'Hand'}{' '}
+                  rating: {state.lastRatingUpdate.before.rating} →{' '}
+                  <strong>{state.lastRatingUpdate.after.rating}</strong>
+                </p>
+              )}
               <div className="panel__actions">
                 <button
                   type="button"

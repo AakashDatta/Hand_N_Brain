@@ -11,9 +11,11 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
+  Role,
   type ClientMessage,
   type Color,
   type ErrorCode,
+  type LeaderboardEntry,
   type MatchPlayerInfo,
   type ServerMessage,
   sanitizeName,
@@ -24,6 +26,8 @@ import {
   type QueueEntry,
 } from './matchmaking';
 import { Match, MatchActionError } from './match';
+import { RatingBook } from './ratings';
+import { MatchLog } from './history';
 
 export interface Transport {
   send(playerId: string, message: ServerMessage): void;
@@ -51,6 +55,8 @@ export class Lobby {
   private queue: QueueEntry[] = [];
   private readonly abandonTimers = new Map<string, NodeJS.Timeout>();
   private readonly abandonTimeoutMs: number;
+  private readonly ratings = new RatingBook();
+  private readonly matchLog = new MatchLog();
 
   constructor(
     private readonly transport: Transport,
@@ -92,6 +98,7 @@ export class Lobby {
       token: player.token,
       name: player.name,
       activeMatchId: player.matchId,
+      ratings: this.ratings.ratingsOf(player.id),
     });
 
     const match = player.matchId ? this.matches.get(player.matchId) : undefined;
@@ -172,6 +179,22 @@ export class Lobby {
           match.resign(player.id),
         );
         return;
+      case 'get-leaderboard':
+        this.send(player.id, {
+          type: 'leaderboard',
+          hand: this.leaderboard(Role.Hand),
+          brain: this.leaderboard(Role.Brain),
+        });
+        return;
+      case 'get-profile':
+        this.send(player.id, {
+          type: 'profile',
+          playerId: player.id,
+          name: player.name,
+          ratings: this.ratings.ratingsOf(player.id),
+          history: this.matchLog.forPlayer(player.id),
+        });
+        return;
     }
   }
 
@@ -192,7 +215,9 @@ export class Lobby {
     this.queue.push({ playerId: player.id, role, joinedAt: Date.now() });
     this.send(player.id, { type: 'queue-status', queued: true, role });
 
-    const formed = tryFormMatch(this.queue);
+    const formed = tryFormMatch(this.queue, (playerId, seatRole) =>
+      this.ratings.relevantRating(playerId, seatRole),
+    );
     if (!formed) return;
     this.queue = formed.remaining;
 
@@ -255,6 +280,32 @@ export class Lobby {
   }
 
   private finishMatch(match: Match): void {
+    const outcome = match.outcome()!;
+
+    // Rate the game and tell each player how their role rating moved.
+    const changes = this.ratings.applyMatchResult(match.seats, outcome.winner);
+    for (const change of changes) {
+      this.send(change.playerId, {
+        type: 'rating-update',
+        matchId: match.id,
+        role: change.role,
+        before: change.before,
+        after: change.after,
+      });
+    }
+
+    this.matchLog.add({
+      matchId: match.id,
+      endedAt: Date.now(),
+      players: this.matchPlayers(match).map((p) => ({
+        playerId: p.playerId,
+        name: p.name,
+        seat: p.seat,
+      })),
+      outcome,
+      moveCount: match.snapshot().history.length,
+    });
+
     for (const id of seatPlanPlayers(match.seats)) {
       const player = this.playersById.get(id);
       if (player && player.matchId === match.id) {
@@ -263,6 +314,20 @@ export class Lobby {
       this.cancelAbandonTimer(id);
     }
     this.matches.delete(match.id);
+  }
+
+  /** Top rated players for one role, best first. */
+  private leaderboard(role: Role, limit = 10): LeaderboardEntry[] {
+    return this.ratings
+      .ratedPlayers(role)
+      .sort((a, b) => b.state.rating - a.state.rating)
+      .slice(0, limit)
+      .map(({ playerId, state }) => ({
+        playerId,
+        name: this.playersById.get(playerId)?.name ?? 'Unknown',
+        rating: state.rating,
+        gamesPlayed: state.gamesPlayed,
+      }));
   }
 
   // -------------------------------------------------------------------------

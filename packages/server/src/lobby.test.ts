@@ -186,6 +186,54 @@ describe('playing a match', () => {
   });
 });
 
+describe('ratings, history, and leaderboard', () => {
+  it('rates a finished match, updates profiles, and fills the leaderboard', () => {
+    const ids = queueFour();
+    const matchId = transport.last(ids[0], 'match-found').matchId;
+    const whiteHand = playerInSeat(ids[0], 'w', 'HAND');
+    const whiteBrain = playerInSeat(ids[0], 'w', 'BRAIN');
+    const blackHand = playerInSeat(ids[0], 'b', 'HAND');
+
+    // Black resigns; White team wins.
+    lobby.handleMessage(blackHand, { type: 'resign', matchId });
+
+    // Every player got a rating update for exactly their role.
+    const winnerUpdate = transport.last(whiteHand, 'rating-update');
+    expect(winnerUpdate.role).toBe('HAND');
+    expect(winnerUpdate.after.rating).toBeGreaterThan(winnerUpdate.before.rating);
+    const brainUpdate = transport.last(whiteBrain, 'rating-update');
+    expect(brainUpdate.role).toBe('BRAIN');
+    const loserUpdate = transport.last(blackHand, 'rating-update');
+    expect(loserUpdate.after.rating).toBeLessThan(loserUpdate.before.rating);
+
+    // The profile reflects the new rating and the match history.
+    lobby.handleMessage(whiteHand, { type: 'get-profile' });
+    const profile = transport.last(whiteHand, 'profile');
+    expect(profile.ratings.hand.rating).toBe(winnerUpdate.after.rating);
+    expect(profile.ratings.hand.gamesPlayed).toBe(1);
+    expect(profile.history).toHaveLength(1);
+    expect(profile.history[0]).toMatchObject({
+      matchId,
+      outcome: { winner: 'w', by: 'resignation' },
+    });
+    expect(profile.history[0].opponents).toHaveLength(2);
+
+    // The leaderboard lists rated players per role, best first.
+    lobby.handleMessage(whiteHand, { type: 'get-leaderboard' });
+    const board = transport.last(whiteHand, 'leaderboard');
+    expect(board.hand).toHaveLength(2);
+    expect(board.brain).toHaveLength(2);
+    expect(board.hand[0].rating).toBeGreaterThanOrEqual(board.hand[1].rating);
+  });
+
+  it('reports seed ratings in the welcome message', () => {
+    const id = lobby.hello(undefined, 'Fresh');
+    const welcome = transport.last(id, 'welcome');
+    expect(welcome.ratings.hand).toEqual({ rating: 1200, gamesPlayed: 0 });
+    expect(welcome.ratings.brain).toEqual({ rating: 1200, gamesPlayed: 0 });
+  });
+});
+
 describe('disconnection and reconnection', () => {
   afterEach(() => {
     vi.useRealTimers();

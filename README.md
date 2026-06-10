@@ -13,27 +13,36 @@ constraint is the whole point of the game, and it is preserved everywhere.
 
 ## Status
 
-**Phase 1 — Stockfish AI (opponent and teammate).** Four playable modes:
-
-- **Hot-seat** — all four roles played by humans passing the device (Phase 0).
-- **You vs AI** — you play both Brain and Hand against a Stockfish team.
-- **AI Brain teammate** — Stockfish announces a piece type; you choose which
-  piece and where. Diverging from its exact idea is the fun.
-- **AI Hand teammate** — you name the piece type; Stockfish plays the best
-  move of that type.
+| Phase | Scope | State |
+| ----- | ----- | ----- |
+| 0 | Core turn-protocol engine + local hot-seat | ✅ |
+| 1 | Stockfish AI: opponent, AI-Brain teammate, AI-Hand teammate | ✅ |
+| 2 | Online 2v2 multiplayer with an authoritative server | ✅ |
+| 3 | Dual Hand/Brain Elo, rating-aware matchmaking, history, leaderboards | ✅ (in-memory) |
+| next | Postgres persistence (schema in `docs/data-model.md`), accounts/auth, duo-queue, spectating | planned |
 
 Full chess rules (castling, en passant, promotion, check, checkmate,
 stalemate, draws) are correct because rule logic is delegated entirely to
 [chess.js](https://github.com/jhlywa/chess.js).
 
-Planned next: Phase 2 (online multiplayer with an authoritative server),
-Phase 3 (dual Hand/Brain Elo + history). See the build brief for details.
+## Playing
+
+**Local** (no server needed): hot-seat for four humans around one device, or
+any mix with Stockfish — *You vs AI*, *AI Brain teammate* (it announces a
+type, you pick the move — diverging from its idea is the fun), *AI Hand
+teammate* (you name types, it moves).
+
+**Online**: queue as Hand, Brain, or either; the server forms 2v2 teams of
+similar strength, validates every action, survives refreshes/reconnects, and
+rates each finished game on your two independent role ratings.
 
 ## Architecture
 
 > **chess.js is the single source of truth** for move generation, legality, and
 > game-over detection. The Hand and Brain logic is a thin, well-tested layer on
-> top of it — it never reimplements chess rules.
+> top of it — it never reimplements chess rules. Online, the **server is
+> authoritative**: every Brain choice and Hand move is validated server-side;
+> the client never applies moves locally.
 
 ### The turn protocol
 
@@ -55,11 +64,11 @@ Because the offered types are *derived from the legal-move list*:
   (promotion additionally lets the Hand choose the promotion piece).
 - The Brain can never name a type that has no legal move.
 
-### The seat model (AI integration)
+### The seat model
 
-Every game has four seats — a Brain and a Hand per color — and each seat is
-controlled by a human or by the AI. All game modes are just seat
-configurations, driven by one orchestrator:
+Every game has four seats — a Brain and a Hand per color. Locally each seat is
+human- or Stockfish-controlled (all modes are just seat configurations);
+online each seat is a connected player.
 
 - **AI Brain** runs a full Stockfish search, then announces only the piece
   *type* of its preferred move — exactly the one bit a human Brain may
@@ -71,38 +80,42 @@ configurations, driven by one orchestrator:
 Stockfish runs in-browser as a single-threaded WASM Web Worker (the
 `lite-single` build: ~7&nbsp;MB, no cross-origin-isolation headers needed, far
 stronger than any human). Difficulty (1–8) maps to Stockfish's Skill Level
-plus a per-move time budget; the mapping lives in one table
-(`src/ai/uci.ts`) so it is easy to retune. The engine binary is **not**
-committed — `scripts/copy-stockfish.mjs` stages it from `node_modules` into
-`public/engine/` on install and before dev/build.
+plus a per-move time budget, isolated in one table for retuning. The engine
+binary is **not** committed; it is staged from `node_modules` into
+`public/engine/` before dev/build.
 
-### Layout
+### Ratings (dual Elo)
+
+Every player has **two independent ratings** — one as Hand, one as Brain
+(both seeded at 1200, floored at 100, provisional K=40 for the first 20 games
+per role, then K=32). After a game, each player updates *only the role they
+played*, against the **opposing team's average relevant rating**, with the
+team result. Matchmaking pairs on the same definition: the longest waiter
+anchors the match, rating-closest compatible players fill it, and the team
+split minimizes the strength gap. All formulas and tunables live in
+`packages/core/src/elo.ts`.
+
+### Monorepo layout
 
 ```
-src/
-  engine/                Framework-agnostic Hand & Brain protocol over chess.js
-    types.ts             Shared types (PieceType, Phase, GameSnapshot, …)
-    HandBrainGame.ts     The turn protocol — the heart of the project
-    HandBrainGame.test.ts Protocol + edge-case tests (vitest)
-  ai/                    Stockfish integration
-    uci.ts               Pure UCI helpers + difficulty mapping (unit-tested)
-    StockfishEngine.ts   Async wrapper around the WASM Web Worker
-    position.ts          Piece-type lookup for Brain announcements
-    integration.test.ts  Real-engine test of the full protocol loop
-  game/
-    seats.ts             Seat model, mode presets, turn-actor logic
-  ui/                    React interface
-    useHandBrainGame.ts  React binding for the engine
-    useAiSeats.ts        Drives AI-controlled seats
-    App.tsx              Setup ⇄ game flow, board, panels
-    GameSetup.tsx, BrainPanel.tsx, HandPanel.tsx, PromotionPicker.tsx, …
-  main.tsx
-scripts/
-  copy-stockfish.mjs     Stages the engine WASM into public/engine/
+packages/
+  core/      Shared by client and server — they can never drift
+    src/HandBrainGame.ts   The turn protocol — the heart of the project
+    src/protocol.ts        Wire protocol + inbound message validation
+    src/elo.ts             Dual-rating Elo math (isolated + tunable)
+  web/       React client (Vite)
+    src/ai/                Stockfish WASM worker, UCI helpers, difficulty
+    src/game/seats.ts      Local seat model + mode presets
+    src/ui/                PlaySurface (shared board UI), panels, local views
+    src/online/            WS connection, online state hook, online views
+  server/    Authoritative online server (Node + ws)
+    src/match.ts           Seat-level authority over one game
+    src/matchmaking.ts     Pure queue pairing (rating-aware)
+    src/ratings.ts         Rating ledger applying the core Elo rule
+    src/lobby.ts           Identities, queue, matches, reconnection (socket-free)
+    src/server.ts          Thin ws wiring + static serving of the web build
+docs/data-model.md         Persistence schema ahead of the database phase
 ```
-
-The engine layer has no React or DOM dependency, so the same protocol layer
-will back the future online-server phase.
 
 ## Getting started
 
@@ -110,28 +123,31 @@ Requires Node 18+.
 
 ```bash
 npm install
-npm run dev        # start the local hot-seat app (Vite dev server)
-npm test           # run the engine/protocol test suite
-npm run build      # type-check and produce a production build
+npm run dev          # web client at http://localhost:5173 (local play works alone)
+npm run dev:server   # game server at :8080 — needed for online play (dev proxies /ws)
+npm test             # all workspace test suites
+npm run build        # typecheck + production build
 ```
 
-Open the dev-server URL it prints (default http://localhost:5173).
+Production: `npm run build`, then `npm run start -w @hnb/server` serves the
+built web app and the WebSocket endpoint from one process (port `$PORT`,
+default 8080).
 
 ## How to play
 
-Pick a mode, color, and difficulty on the setup screen, then on each turn:
+Pick a mode (or go online) on the setup screen, then on each turn:
 
-1. **Brain:** click one of the offered piece types (or wait for the AI Brain's
-   announcement).
+1. **Brain:** click one of the offered piece types (or wait for the AI/your
+   teammate's announcement).
 2. **Hand:** the board highlights every movable piece of that type. Click a
    piece, then a highlighted destination (or drag it, or pick from the move
-   list). Promotions prompt for the promotion piece. Use *Back to Brain* to
-   reconsider before moving (only when your Brain is human — you can't ask an
-   AI Brain to re-decide).
+   list). Promotions prompt for the promotion piece. In local play, *Back to
+   Brain* lets a human Brain reconsider; online (and with an AI Brain) the
+   announcement is binding.
 
-In hot-seat the board orients toward the side to move; with AI in the game it
-stays on your team's side. The banner shows whose turn it is, which role must
-act, and check / game-over state.
+The banner shows whose turn it is, which role must act, and check / game-over
+state. Online you also see the roster with live connection status, your
+ratings, rating changes after each game, leaderboards, and recent matches.
 
 ## Tech
 
@@ -139,8 +155,10 @@ act, and check / game-over state.
 - **AI:** [Stockfish.js](https://github.com/nmrugg/stockfish.js) WASM
   (GPLv3, loaded as a separate runtime worker asset, not bundled)
 - **UI:** React + TypeScript, [react-chessboard](https://github.com/Clariity/react-chessboard)
-- **Build/test:** Vite + Vitest
+- **Server:** Node + TypeScript, [ws](https://github.com/websockets/ws)
+- **Build/test:** Vite + Vitest, npm workspaces
 
 ## License
 
-[MIT](MIT.md)
+[MIT](MIT.md) for this project's code. The Stockfish engine binary is GPLv3
+and is fetched from npm at install time rather than committed.

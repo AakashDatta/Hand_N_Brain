@@ -405,6 +405,42 @@ body {
   margin: 0;
 }
 
+/* --- Leaderboard / history lists --- */
+.boards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.92rem;
+}
+
+.board-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.board-list__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-list__rating {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
 /* --- Promotion modal --- */
 .modal-backdrop {
   position: fixed;
