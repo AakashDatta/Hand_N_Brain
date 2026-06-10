@@ -109,6 +109,8 @@ export interface GameSnapshot {
   handMoves: LegalMove[];
   /** Move history in SAN, oldest first. */
   history: string[];
+  /** From/to squares of the most recent move, for board highlighting. */
+  lastMove: { from: string; to: string } | null;
   /** Populated when phase is GAME_OVER. */
   result: GameResult | null;
 }

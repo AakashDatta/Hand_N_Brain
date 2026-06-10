@@ -279,4 +279,17 @@ describe('snapshot', () => {
     expect(snap.history).toEqual(['d4']);
     expect(snap.turn).toBe('b');
   });
+
+  it('reports the last move from/to (null at the start)', () => {
+    const game = new HandBrainGame();
+    expect(game.snapshot().lastMove).toBeNull();
+
+    game.selectPieceType('p');
+    game.selectMove(game.handMoves().find((m) => m.san === 'e4')!);
+    expect(game.snapshot().lastMove).toEqual({ from: 'e2', to: 'e4' });
+
+    game.selectPieceType('n');
+    game.selectMove(game.handMoves().find((m) => m.san === 'Nf6')!);
+    expect(game.snapshot().lastMove).toEqual({ from: 'g8', to: 'f6' });
+  });
 });

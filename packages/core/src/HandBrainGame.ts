@@ -242,6 +242,7 @@ export class HandBrainGame {
       selectedPieceType: this.selectedPieceType,
       handMoves: this.handMoves(),
       history: this.chess.history(),
+      lastMove: this.lastMove(),
       result: this.result(),
     };
   }
@@ -249,6 +250,13 @@ export class HandBrainGame {
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
+
+  /** From/to of the most recent move, or null at the start of the game. */
+  private lastMove(): { from: string; to: string } | null {
+    const history = this.chess.history({ verbose: true });
+    const last = history[history.length - 1];
+    return last ? { from: last.from, to: last.to } : null;
+  }
 
   /** All legal moves for the side to move, in chess.js's verbose form. */
   private allLegalMoves(): ChessJsMove[] {

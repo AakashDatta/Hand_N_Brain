@@ -147,6 +147,7 @@ export function PlaySurface({
         fen: snapshot.fen,
         inCheck: snapshot.inCheck,
         turn: snapshot.turn,
+        lastMove: snapshot.lastMove,
         showHandHints: handEnabled,
         sourceSquares,
         selectedFrom,
@@ -156,6 +157,7 @@ export function PlaySurface({
       snapshot.fen,
       snapshot.inCheck,
       snapshot.turn,
+      snapshot.lastMove,
       handEnabled,
       sourceSquares,
       selectedFrom,
@@ -220,6 +222,7 @@ function computeSquareStyles(args: {
   fen: string;
   inCheck: boolean;
   turn: 'w' | 'b';
+  lastMove: { from: string; to: string } | null;
   showHandHints: boolean;
   sourceSquares: Set<string>;
   selectedFrom: string | null;
@@ -227,10 +230,18 @@ function computeSquareStyles(args: {
 }): Record<string, SquareStyle> {
   const styles: Record<string, SquareStyle> = {};
 
+  // Persistent highlight of the move just played (under all other markers).
+  if (args.lastMove) {
+    for (const sq of [args.lastMove.from, args.lastMove.to]) {
+      styles[sq] = { background: 'rgba(255, 213, 79, 0.32)' };
+    }
+  }
+
   if (args.showHandHints) {
-    // Mark every movable piece of the named type.
+    // Mark every movable piece of the named type (keep any last-move tint).
     for (const sq of args.sourceSquares) {
       styles[sq] = {
+        ...styles[sq],
         boxShadow: 'inset 0 0 0 3px rgba(56, 132, 255, 0.65)',
       };
     }
