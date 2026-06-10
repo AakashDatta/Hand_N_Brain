@@ -4,7 +4,9 @@ import { PIECE_TYPE_NAMES, type LegalMove, type PieceType } from '../engine';
  * The Hand's control: shows the piece type the Brain named and lists the legal
  * moves of that type. The Hand can pick a move here or directly on the board.
  * A "Back" affordance lets the Hand reconsider before committing (local
- * convenience only — no move has been made, so nothing is revealed).
+ * convenience only — no move has been made, so nothing is revealed). It is
+ * absent when the Brain seat is an AI: the Hand cannot ask the Brain to
+ * re-decide.
  */
 export function HandPanel({
   pieceType,
@@ -17,15 +19,17 @@ export function HandPanel({
   moves: LegalMove[];
   selectedFrom: string | null;
   onPickMove: (move: LegalMove) => void;
-  onBack: () => void;
+  onBack?: () => void;
 }) {
   return (
     <div className="panel">
       <div className="panel__header">
         <h2 className="panel__title">Hand</h2>
-        <button type="button" className="link-button" onClick={onBack}>
-          ← Back to Brain
-        </button>
+        {onBack && (
+          <button type="button" className="link-button" onClick={onBack}>
+            ← Back to Brain
+          </button>
+        )}
       </div>
       <p className="panel__hint">
         Brain chose <strong>{PIECE_TYPE_NAMES[pieceType]}</strong>. Move one on

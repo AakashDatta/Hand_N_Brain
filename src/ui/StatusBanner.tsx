@@ -6,6 +6,7 @@ import {
   type Color,
   type GameSnapshot,
 } from '../engine';
+import type { Actor } from '../game/seats';
 
 const COLOR_NAMES: Record<Color, string> = { w: 'White', b: 'Black' };
 
@@ -19,9 +20,16 @@ const GAME_OVER_TEXT: Record<GameOverReason, string> = {
 };
 
 /**
- * Shows whose turn it is, which role must act, and any check/game-over state.
+ * Shows whose turn it is, which role must act (and whether it is an AI seat),
+ * and any check/game-over state.
  */
-export function StatusBanner({ snapshot }: { snapshot: GameSnapshot }) {
+export function StatusBanner({
+  snapshot,
+  actor,
+}: {
+  snapshot: GameSnapshot;
+  actor: Actor | null;
+}) {
   if (snapshot.phase === Phase.GameOver && snapshot.result) {
     const { reason, winner } = snapshot.result;
     const headline =
@@ -37,11 +45,10 @@ export function StatusBanner({ snapshot }: { snapshot: GameSnapshot }) {
   }
 
   const side = COLOR_NAMES[snapshot.turn];
-  const role =
-    snapshot.phase === Phase.AwaitingBrain ? Role.Brain : Role.Hand;
-  const roleLabel = role === Role.Brain ? 'Brain' : 'Hand';
+  const roleLabel = actor?.role === Role.Brain ? 'Brain' : 'Hand';
+  const aiTag = actor?.controller === 'ai' ? ' (AI)' : '';
   const action =
-    role === Role.Brain
+    actor?.role === Role.Brain
       ? 'name a piece type'
       : `move a ${PIECE_TYPE_NAMES[
           snapshot.selectedPieceType!
@@ -50,7 +57,8 @@ export function StatusBanner({ snapshot }: { snapshot: GameSnapshot }) {
   return (
     <div className={`banner banner--${snapshot.turn === 'w' ? 'white' : 'black'}`}>
       <span className="banner__title">
-        {side} · {roleLabel} to {action}
+        {side} · {roleLabel}
+        {aiTag} to {action}
       </span>
       {snapshot.inCheck && <span className="banner__check">Check!</span>}
     </div>

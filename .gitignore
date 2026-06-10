@@ -11,3 +11,6 @@ dist/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Stockfish WASM engine (staged from node_modules by scripts/copy-stockfish.mjs)
+/public/engine/
