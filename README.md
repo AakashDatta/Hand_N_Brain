@@ -11,6 +11,12 @@ Each side is two players:
 The Brain communicates **only** the piece type. That single-bit-per-turn
 constraint is the whole point of the game, and it is preserved everywhere.
 
+![A real Stockfish-vs-Stockfish Hand & Brain game](docs/hand-brain-demo.gif)
+
+*Above: an actual engine game — each move is the Brain naming a piece type and
+the Hand then choosing among that type's legal moves, often diverging from the
+engine's own top choice. Regenerate with `npm run demo:gif -w @hnb/web`.*
+
 ## Status
 
 | Phase | Scope | State |

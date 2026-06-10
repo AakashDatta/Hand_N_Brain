@@ -16,6 +16,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "@resvg/resvg-wasm": "^2.6.2",
+    "concurrently": "^9.2.1",
+    "gifenc": "^1.0.3"
   }
 }
