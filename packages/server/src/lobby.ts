@@ -74,6 +74,13 @@ export interface LobbyOptions {
 
 const DEFAULT_ABANDON_TIMEOUT_MS = 60_000;
 
+/**
+ * Default team time control: 5 minutes + 3s increment. Hand & Brain turns
+ * involve two decisions, so this plays like a relaxed blitz game.
+ * TODO(config): let room hosts pick a preset when starting a match.
+ */
+const DEFAULT_CLOCK = { baseMs: 5 * 60_000, incrementMs: 3_000 };
+
 export class Lobby {
   private readonly playersById = new Map<string, Player>();
   private readonly playersByToken = new Map<string, Player>();
@@ -81,6 +88,7 @@ export class Lobby {
   private readonly rooms = new Map<string, Room>();
   private queue: QueueEntry[] = [];
   private readonly abandonTimers = new Map<string, NodeJS.Timeout>();
+  private readonly flagTimers = new Map<string, NodeJS.Timeout>();
   private readonly abandonTimeoutMs: number;
   private readonly ratings = new RatingBook();
   private readonly matchLog = new MatchLog();
@@ -331,7 +339,7 @@ export class Lobby {
 
   /** Create a match for a full seat plan and notify all four players. */
   private startMatch(seats: SeatPlan): void {
-    const match = new Match(randomUUID(), seats);
+    const match = new Match(randomUUID(), seats, DEFAULT_CLOCK);
     this.matches.set(match.id, match);
     for (const id of seatPlanPlayers(seats)) {
       const participant = this.playersById.get(id)!;
@@ -344,6 +352,7 @@ export class Lobby {
       });
     }
     this.sendMatchState(match);
+    this.armFlagTimer(match);
   }
 
   private removeFromQueue(playerId: string): void {
@@ -378,6 +387,36 @@ export class Lobby {
     this.sendMatchState(match);
     if (match.isFinished()) {
       this.finishMatch(match);
+    } else {
+      this.armFlagTimer(match);
+    }
+  }
+
+  /**
+   * Schedule the flag check for the side whose clock is running. Re-armed on
+   * every action; fires just after the bank would empty, declares the
+   * timeout, and broadcasts the final state.
+   */
+  private armFlagTimer(match: Match): void {
+    this.cancelFlagTimer(match.id);
+    const msLeft = match.msUntilFlag();
+    if (msLeft === null) return;
+    this.flagTimers.set(
+      match.id,
+      setTimeout(() => {
+        const live = this.matches.get(match.id);
+        if (!live || !live.checkTimeout()) return;
+        this.sendMatchState(live);
+        this.finishMatch(live);
+      }, msLeft + 5),
+    );
+  }
+
+  private cancelFlagTimer(matchId: string): void {
+    const timer = this.flagTimers.get(matchId);
+    if (timer) {
+      clearTimeout(timer);
+      this.flagTimers.delete(matchId);
     }
   }
 
@@ -423,6 +462,7 @@ export class Lobby {
       }
       this.cancelAbandonTimer(id);
     }
+    this.cancelFlagTimer(match.id);
     this.matches.delete(match.id);
     this.persist(); // ratings + history changed
   }
@@ -621,6 +661,7 @@ export class Lobby {
       snapshot: match.snapshot(),
       players: this.matchPlayers(match),
       outcome: match.outcome(),
+      clock: match.clockView(),
     };
     for (const id of onlyTo ?? seatPlanPlayers(match.seats)) {
       this.send(id, message);

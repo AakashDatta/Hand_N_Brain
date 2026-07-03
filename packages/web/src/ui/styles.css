@@ -503,6 +503,48 @@ body {
   margin-top: 16px;
 }
 
+/* --- Team clocks --- */
+.clock-row {
+  display: flex;
+  gap: 12px;
+}
+
+.clock {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 14px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  opacity: 0.65;
+}
+
+.clock--active {
+  opacity: 1;
+  border-color: var(--accent);
+}
+
+.clock--low {
+  border-color: #d63031;
+}
+
+.clock--low .clock__time {
+  color: #ff6b6b;
+}
+
+.clock__label {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.clock__time {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- Promotion modal --- */
 .modal-backdrop {
   position: fixed;

@@ -54,11 +54,23 @@ export interface MatchPlayerInfo {
   connected: boolean;
 }
 
-/** How a finished match ended. Resignation is a match-level outcome that the
- *  chess position itself cannot express. */
+/** How a finished match ended. Resignation and timeout are match-level
+ *  outcomes that the chess position itself cannot express. */
 export interface MatchOutcome {
   winner: Color | null;
-  by: GameOverReason | 'resignation';
+  by: GameOverReason | 'resignation' | 'timeout';
+}
+
+/**
+ * A team clock snapshot at the moment a message was sent. Each team's Brain
+ * and Hand share one clock; it runs from the start of their turn (Brain
+ * thinking included) until the Hand's move lands, then gains the increment.
+ */
+export interface ClockView {
+  /** Milliseconds remaining per team, as of this message. */
+  remaining: Record<Color, number>;
+  /** Whose clock is currently running; null once the match is over. */
+  running: Color | null;
 }
 
 /** A member of a private room and the seat they have claimed, if any. */
@@ -127,6 +139,8 @@ export type ServerMessage =
       snapshot: GameSnapshot;
       players: MatchPlayerInfo[];
       outcome: MatchOutcome | null;
+      /** Team clocks, or null for an untimed match. */
+      clock: ClockView | null;
     }
   | {
       /** Full state of the private room a player is in; sent on every change. */

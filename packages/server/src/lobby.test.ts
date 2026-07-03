@@ -307,3 +307,38 @@ describe('disconnection and reconnection', () => {
     expect(transport.ofType(id, 'match-found')).toHaveLength(0);
   });
 });
+
+describe('clock timeouts', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('flags the stalling team, rates it as a loss, and broadcasts', () => {
+    // The clock math reads Date.now(), which vitest does not fake by default.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const ids = queueFour();
+
+    // Nobody moves: White's 5-minute bank empties and the flag timer fires.
+    vi.advanceTimersByTime(5 * 60_000 + 10);
+
+    const state = transport.last(ids[0], 'match-state');
+    expect(state.outcome).toEqual({ winner: 'b', by: 'timeout' });
+    expect(state.clock).toEqual({
+      remaining: { w: 0, b: 5 * 60_000 },
+      running: null,
+    });
+
+    // Timeout is rated like any loss: every player got a rating update.
+    for (const id of ids) {
+      expect(transport.last(id, 'rating-update')).toBeDefined();
+    }
+  });
+
+  it('broadcast states carry a live clock while the match runs', () => {
+    const ids = queueFour();
+    const state = transport.last(ids[0], 'match-state');
+    expect(state.clock).not.toBeNull();
+    expect(state.clock!.running).toBe('w');
+    expect(state.clock!.remaining.w).toBeGreaterThan(0);
+  });
+});

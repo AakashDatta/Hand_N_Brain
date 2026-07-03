@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  ClockView,
   Color,
   GameSnapshot,
   LeaderboardEntry,
@@ -34,6 +35,8 @@ export interface OnlineState {
     /** Null only in the instant between match-found and the first state. */
     snapshot: GameSnapshot | null;
     outcome: MatchOutcome | null;
+    /** Server clock snapshot plus local receipt time, for smooth countdown. */
+    clock: (ClockView & { receivedAt: number }) | null;
   } | null;
   /** Most recent server-rejected action, for display. */
   lastError: string | null;
@@ -140,6 +143,7 @@ export function useOnlineGame(initialName?: string): OnlineController {
               // The authoritative snapshot follows immediately in match-state.
               snapshot: prev.match?.snapshot ?? null,
               outcome: null,
+              clock: null,
             },
           }));
           return;
@@ -155,6 +159,9 @@ export function useOnlineGame(initialName?: string): OnlineController {
                 snapshot: message.snapshot,
                 players: message.players,
                 outcome: message.outcome,
+                clock: message.clock
+                  ? { ...message.clock, receivedAt: Date.now() }
+                  : null,
               },
             };
           });

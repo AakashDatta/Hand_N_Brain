@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ClockView } from '@hnb/core';
 import {
   Phase,
   Role,
@@ -366,6 +367,65 @@ function RoomScreen({ online }: { online: ReturnType<typeof useOnlineGame> }) {
 }
 
 // ---------------------------------------------------------------------------
+// Clocks
+// ---------------------------------------------------------------------------
+
+function formatClock(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+/**
+ * Team clocks, counted down locally from the last server snapshot. The server
+ * remains authoritative — this display only extrapolates between broadcasts.
+ */
+function ClockPanel({
+  clock,
+  myColor,
+}: {
+  clock: ClockView & { receivedAt: number };
+  myColor: Color;
+}) {
+  // Re-render twice a second while a clock is running.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!clock.running) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 500);
+    return () => clearInterval(interval);
+  }, [clock]);
+
+  const displayed = (color: Color): number => {
+    const base = clock.remaining[color];
+    if (clock.running !== color) return base;
+    return base - (Date.now() - clock.receivedAt);
+  };
+
+  const side = (color: Color, label: string) => {
+    const ms = displayed(color);
+    const active = clock.running === color;
+    const low = active && ms < 30_000;
+    return (
+      <div
+        className={`clock${active ? ' clock--active' : ''}${low ? ' clock--low' : ''}`}
+      >
+        <span className="clock__label">{label}</span>
+        <span className="clock__time">{formatClock(ms)}</span>
+      </div>
+    );
+  };
+
+  const opponent: Color = myColor === 'w' ? 'b' : 'w';
+  return (
+    <div className="clock-row">
+      {side(opponent, opponent === 'w' ? 'White' : 'Black')}
+      {side(myColor, myColor === 'w' ? 'White (you)' : 'Black (you)')}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Match screen
 // ---------------------------------------------------------------------------
 
@@ -402,6 +462,8 @@ function OnlineMatch({
       statusTag={statusTag}
       topPanels={
         <>
+          {match.clock && <ClockPanel clock={match.clock} myColor={mySeat.color} />}
+
           <RosterPanel players={match.players} myPlayerId={state.playerId} />
 
           {iAmActingBrain && !match.outcome && (
@@ -525,6 +587,11 @@ function describeOutcome(
 ): string {
   if (outcome.winner === null) return 'Draw';
   const won = outcome.winner === myColor;
-  const how = outcome.by === 'resignation' ? 'by resignation' : '';
+  const how =
+    outcome.by === 'resignation'
+      ? 'by resignation'
+      : outcome.by === 'timeout'
+        ? 'on time'
+        : '';
   return `${won ? 'Your team wins' : 'Your team loses'} ${how}`.trim();
 }
