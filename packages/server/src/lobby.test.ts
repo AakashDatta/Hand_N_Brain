@@ -342,3 +342,26 @@ describe('clock timeouts', () => {
     expect(state.clock!.remaining.w).toBeGreaterThan(0);
   });
 });
+
+describe('draw agreement over the lobby', () => {
+  it('broadcasts the pending offer and the agreed outcome, rated as a draw', () => {
+    const ids = queueFour();
+    const matchId = transport.last(ids[0], 'match-found').matchId;
+    const whiteHand = playerInSeat(ids[0], 'w', 'HAND');
+    const blackBrain = playerInSeat(ids[0], 'b', 'BRAIN');
+
+    lobby.handleMessage(whiteHand, { type: 'offer-draw', matchId });
+    for (const id of ids) {
+      expect(transport.last(id, 'match-state').drawOffer).toBe('w');
+    }
+
+    lobby.handleMessage(blackBrain, { type: 'respond-draw', matchId, accept: true });
+    const state = transport.last(ids[0], 'match-state');
+    expect(state.outcome).toEqual({ winner: null, by: 'agreement' });
+
+    // Equal seeds drawing: ratings unchanged but games counted.
+    const update = transport.last(whiteHand, 'rating-update');
+    expect(update.after.rating).toBe(update.before.rating);
+    expect(update.after.gamesPlayed).toBe(1);
+  });
+});

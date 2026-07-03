@@ -20,9 +20,25 @@ import { MoveHistory } from '../ui/MoveHistory';
  * All game state is the server's; this view only renders it and forwards
  * actions.
  */
-export function OnlineView({ onExit }: { onExit: () => void }) {
+export function OnlineView({
+  autoJoinCode = null,
+  onExit,
+}: {
+  /** Room code from an invite link, joined automatically once connected. */
+  autoJoinCode?: string | null;
+  onExit: () => void;
+}) {
   const online = useOnlineGame();
   const { state } = online;
+
+  // Fire the invite-link join exactly once, as soon as we are signed in.
+  const [invitePending, setInvitePending] = useState(autoJoinCode !== null);
+  useEffect(() => {
+    if (invitePending && state.connection === 'open' && state.playerId) {
+      online.joinRoom(autoJoinCode!);
+      setInvitePending(false);
+    }
+  }, [invitePending, state.connection, state.playerId, online, autoJoinCode]);
 
   if (state.connection !== 'open' && !state.match) {
     return (
@@ -289,7 +305,18 @@ function RoomScreen({ online }: { online: ReturnType<typeof useOnlineGame> }) {
     <div className="setup">
       <h2 className="setup__heading">Private room</h2>
       <p className="room-code">
-        Code: <strong>{room.code}</strong>
+        Code: <strong>{room.code}</strong>{' '}
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => {
+            const url = new URL(window.location.href);
+            url.search = `?room=${room.code}`;
+            navigator.clipboard?.writeText(url.toString());
+          }}
+        >
+          Copy invite link
+        </button>
       </p>
       <p className="panel__hint">
         Share the code with three friends. Everyone picks a seat; the host
@@ -473,6 +500,29 @@ function OnlineMatch({
             />
           )}
 
+          {!match.outcome && match.drawOffer && match.drawOffer !== mySeat.color && (
+            <div className="panel panel--thinking">
+              <h2 className="panel__title">Draw offered</h2>
+              <p className="panel__hint">The other team offers a draw.</p>
+              <div className="panel__actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => online.respondDraw(true)}
+                >
+                  Accept draw
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => online.respondDraw(false)}
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          )}
+
           {match.outcome && (
             <div className="panel">
               <h2 className="panel__title">
@@ -503,13 +553,23 @@ function OnlineMatch({
           <MoveHistory history={snapshot.history} />
           {state.lastError && <p className="error-text">{state.lastError}</p>}
           {!match.outcome && (
-            <button
-              type="button"
-              className="link-button reset-link"
-              onClick={online.resign}
-            >
-              Resign
-            </button>
+            <div className="panel__actions">
+              <button
+                type="button"
+                className="link-button"
+                disabled={match.drawOffer === mySeat.color}
+                onClick={online.offerDraw}
+              >
+                {match.drawOffer === mySeat.color ? 'Draw offered…' : 'Offer draw'}
+              </button>
+              <button
+                type="button"
+                className="link-button"
+                onClick={online.resign}
+              >
+                Resign
+              </button>
+            </div>
           )}
           {match.outcome && (
             <button type="button" className="link-button reset-link" onClick={onExit}>
