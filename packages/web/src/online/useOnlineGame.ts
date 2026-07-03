@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  ClockView,
+  Color,
   GameSnapshot,
   LeaderboardEntry,
   LegalMove,
@@ -11,6 +13,7 @@ import type {
   QueueRole,
   RatingState,
   Role,
+  RoomMemberInfo,
   SeatAssignment,
 } from '@hnb/core';
 import { GameSocket, type ConnectionStatus } from './connection';
@@ -32,6 +35,8 @@ export interface OnlineState {
     /** Null only in the instant between match-found and the first state. */
     snapshot: GameSnapshot | null;
     outcome: MatchOutcome | null;
+    /** Server clock snapshot plus local receipt time, for smooth countdown. */
+    clock: (ClockView & { receivedAt: number }) | null;
   } | null;
   /** Most recent server-rejected action, for display. */
   lastError: string | null;
@@ -41,6 +46,8 @@ export interface OnlineState {
   lastRatingUpdate: { role: Role; before: RatingState; after: RatingState } | null;
   leaderboard: { hand: LeaderboardEntry[]; brain: LeaderboardEntry[] } | null;
   history: MatchHistoryEntry[] | null;
+  /** The private room this player is in, if any. */
+  room: { code: string; hostId: string; members: RoomMemberInfo[] } | null;
 }
 
 export interface OnlineController {
@@ -59,6 +66,12 @@ export interface OnlineController {
   leaveFinishedMatch: () => void;
   fetchLeaderboard: () => void;
   fetchProfile: () => void;
+  createRoom: () => void;
+  joinRoom: (code: string) => void;
+  claimSeat: (color: Color, role: Role) => void;
+  unseat: () => void;
+  leaveRoom: () => void;
+  startRoom: () => void;
 }
 
 const INITIAL_STATE: OnlineState = {
@@ -72,11 +85,15 @@ const INITIAL_STATE: OnlineState = {
   lastRatingUpdate: null,
   leaderboard: null,
   history: null,
+  room: null,
 };
 
 export function useOnlineGame(initialName?: string): OnlineController {
   const [state, setState] = useState<OnlineState>(INITIAL_STATE);
   const socketRef = useRef<GameSocket | null>(null);
+  // Last room this client was in, so a reconnect can rejoin it by code
+  // (the server drops lobby members from rooms when their socket closes).
+  const roomCodeRef = useRef<string | null>(null);
 
   useEffect(() => {
     const socket = new GameSocket(undefined, initialName);
@@ -103,6 +120,10 @@ export function useOnlineGame(initialName?: string): OnlineController {
             // If no active match, any stale match view is over.
             match: message.activeMatchId ? prev.match : null,
           }));
+          // Rejoin the room we were in before the connection dropped.
+          if (roomCodeRef.current) {
+            socket.send({ type: 'room-join', code: roomCodeRef.current });
+          }
           return;
         case 'queue-status':
           setState((prev) => ({
@@ -122,6 +143,7 @@ export function useOnlineGame(initialName?: string): OnlineController {
               // The authoritative snapshot follows immediately in match-state.
               snapshot: prev.match?.snapshot ?? null,
               outcome: null,
+              clock: null,
             },
           }));
           return;
@@ -137,6 +159,9 @@ export function useOnlineGame(initialName?: string): OnlineController {
                 snapshot: message.snapshot,
                 players: message.players,
                 outcome: message.outcome,
+                clock: message.clock
+                  ? { ...message.clock, receivedAt: Date.now() }
+                  : null,
               },
             };
           });
@@ -188,7 +213,25 @@ export function useOnlineGame(initialName?: string): OnlineController {
             history: message.history,
           }));
           return;
+        case 'room-state':
+          roomCodeRef.current = message.code;
+          setState((prev) => ({
+            ...prev,
+            queuedAs: null,
+            room: {
+              code: message.code,
+              hostId: message.hostId,
+              members: message.members,
+            },
+          }));
+          return;
         case 'error-message':
+          // Losing the room (e.g. it dissolved while we were away) clears it.
+          if (message.code === 'no-such-room') {
+            roomCodeRef.current = null;
+            setState((prev) => ({ ...prev, room: null, lastError: message.message }));
+            return;
+          }
           setState((prev) => ({ ...prev, lastError: message.message }));
           return;
       }
@@ -237,6 +280,17 @@ export function useOnlineGame(initialName?: string): OnlineController {
         setState((prev) =>
           prev.match?.outcome ? { ...prev, match: null } : prev,
         ),
+      createRoom: () => send((s) => s.send({ type: 'room-create' })),
+      joinRoom: (code) => send((s) => s.send({ type: 'room-join', code })),
+      claimSeat: (color, role) =>
+        send((s) => s.send({ type: 'room-seat', color, role })),
+      unseat: () => send((s) => s.send({ type: 'room-unseat' })),
+      leaveRoom: () => {
+        roomCodeRef.current = null;
+        send((s) => s.send({ type: 'room-leave' }));
+        setState((prev) => ({ ...prev, room: null }));
+      },
+      startRoom: () => send((s) => s.send({ type: 'room-start' })),
       fetchLeaderboard: () => send((s) => s.send({ type: 'get-leaderboard' })),
       fetchProfile: () => send((s) => s.send({ type: 'get-profile' })),
     } satisfies OnlineController;

@@ -441,6 +441,110 @@ body {
   flex-shrink: 0;
 }
 
+/* --- Private rooms --- */
+.friends-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.room-code {
+  font-size: 1.3rem;
+  margin: 0 0 10px;
+  letter-spacing: 0.12em;
+}
+
+.seat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.seat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  text-align: left;
+  background: var(--panel-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.seat-card:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+}
+
+.seat-card:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.seat-card--mine {
+  border-color: var(--accent);
+  background: var(--panel-bg-alt);
+}
+
+.seat-card__label {
+  font-weight: 700;
+}
+
+.seat-card__holder {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.room-actions {
+  margin-top: 16px;
+}
+
+/* --- Team clocks --- */
+.clock-row {
+  display: flex;
+  gap: 12px;
+}
+
+.clock {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 14px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  opacity: 0.65;
+}
+
+.clock--active {
+  opacity: 1;
+  border-color: var(--accent);
+}
+
+.clock--low {
+  border-color: #d63031;
+}
+
+.clock--low .clock__time {
+  color: #ff6b6b;
+}
+
+.clock__label {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.clock__time {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- Promotion modal --- */
 .modal-backdrop {
   position: fixed;

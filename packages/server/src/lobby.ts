@@ -17,6 +17,8 @@ import {
   type ErrorCode,
   type LeaderboardEntry,
   type MatchPlayerInfo,
+  type RoomMemberInfo,
+  type SeatAssignment,
   type ServerMessage,
   sanitizeName,
 } from '@hnb/core';
@@ -24,6 +26,7 @@ import {
   seatPlanPlayers,
   tryFormMatch,
   type QueueEntry,
+  type SeatPlan,
 } from './matchmaking';
 import { Match, MatchActionError } from './match';
 import { RatingBook } from './ratings';
@@ -40,7 +43,27 @@ interface Player {
   name: string;
   connected: boolean;
   matchId: string | null;
+  /** Code of the private room the player is a member of, if any. */
+  roomCode: string | null;
 }
+
+/**
+ * A private room: friends gather by invite code, claim the four seats, and
+ * the host starts the match. The room survives the match, so the same group
+ * can rematch (or swap seats) without re-inviting. Rooms are transient —
+ * never persisted — and dissolve when the last member leaves.
+ */
+interface Room {
+  code: string;
+  hostId: string;
+  /** Insertion order = join order (used to promote a new host). */
+  seats: Map<string, SeatAssignment | null>;
+}
+
+/** Room codes avoid ambiguous characters (0/O, 1/I). */
+const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const ROOM_CODE_LENGTH = 5;
+const ROOM_CAPACITY = 6; // four players + a couple of swap-ins
 
 export interface LobbyOptions {
   /** How long a disconnected player's team survives before forfeiting. */
@@ -51,12 +74,21 @@ export interface LobbyOptions {
 
 const DEFAULT_ABANDON_TIMEOUT_MS = 60_000;
 
+/**
+ * Default team time control: 5 minutes + 3s increment. Hand & Brain turns
+ * involve two decisions, so this plays like a relaxed blitz game.
+ * TODO(config): let room hosts pick a preset when starting a match.
+ */
+const DEFAULT_CLOCK = { baseMs: 5 * 60_000, incrementMs: 3_000 };
+
 export class Lobby {
   private readonly playersById = new Map<string, Player>();
   private readonly playersByToken = new Map<string, Player>();
   private readonly matches = new Map<string, Match>();
+  private readonly rooms = new Map<string, Room>();
   private queue: QueueEntry[] = [];
   private readonly abandonTimers = new Map<string, NodeJS.Timeout>();
+  private readonly flagTimers = new Map<string, NodeJS.Timeout>();
   private readonly abandonTimeoutMs: number;
   private readonly ratings = new RatingBook();
   private readonly matchLog = new MatchLog();
@@ -84,6 +116,7 @@ export class Lobby {
         name: persisted.name,
         connected: false,
         matchId: null, // live matches are never persisted
+        roomCode: null, // rooms are transient
       };
       this.playersById.set(player.id, player);
       this.playersByToken.set(player.token, player);
@@ -160,6 +193,12 @@ export class Lobby {
       this.sendMatchState(match, [player.id]);
       this.broadcastConnection(match, player, true);
     }
+
+    // Back in a room (e.g. reconnected while a match was in progress):
+    // refresh everyone's member list so connection status updates.
+    const room = player.roomCode ? this.rooms.get(player.roomCode) : undefined;
+    if (room) this.broadcastRoomState(room);
+
     return player.id;
   }
 
@@ -172,6 +211,17 @@ export class Lobby {
     this.removeFromQueue(playerId);
 
     const match = player.matchId ? this.matches.get(player.matchId) : undefined;
+
+    // A dropped lobby member leaves their room immediately (the client
+    // auto-rejoins by code on reconnect). Mid-match members stay: they may
+    // reconnect into the game, and the room should still be there after.
+    if (!match || match.isFinished()) {
+      this.leaveRoom(player);
+    } else if (player.roomCode) {
+      const room = this.rooms.get(player.roomCode);
+      if (room) this.broadcastRoomState(room); // show them as disconnected
+    }
+
     if (match && !match.isFinished()) {
       this.broadcastConnection(match, player, false);
       // The disconnected player's team forfeits if they stay away too long.
@@ -225,6 +275,24 @@ export class Lobby {
           match.resign(player.id),
         );
         return;
+      case 'room-create':
+        this.handleRoomCreate(player);
+        return;
+      case 'room-join':
+        this.handleRoomJoin(player, message.code);
+        return;
+      case 'room-seat':
+        this.handleRoomSeat(player, { color: message.color, role: message.role });
+        return;
+      case 'room-unseat':
+        this.handleRoomSeat(player, null);
+        return;
+      case 'room-leave':
+        this.leaveRoom(player);
+        return;
+      case 'room-start':
+        this.handleRoomStart(player);
+        return;
       case 'get-leaderboard':
         this.send(player.id, {
           type: 'leaderboard',
@@ -266,10 +334,14 @@ export class Lobby {
     );
     if (!formed) return;
     this.queue = formed.remaining;
+    this.startMatch(formed.seats);
+  }
 
-    const match = new Match(randomUUID(), formed.seats);
+  /** Create a match for a full seat plan and notify all four players. */
+  private startMatch(seats: SeatPlan): void {
+    const match = new Match(randomUUID(), seats, DEFAULT_CLOCK);
     this.matches.set(match.id, match);
-    for (const id of seatPlanPlayers(formed.seats)) {
+    for (const id of seatPlanPlayers(seats)) {
       const participant = this.playersById.get(id)!;
       participant.matchId = match.id;
       this.send(id, {
@@ -280,6 +352,7 @@ export class Lobby {
       });
     }
     this.sendMatchState(match);
+    this.armFlagTimer(match);
   }
 
   private removeFromQueue(playerId: string): void {
@@ -314,6 +387,36 @@ export class Lobby {
     this.sendMatchState(match);
     if (match.isFinished()) {
       this.finishMatch(match);
+    } else {
+      this.armFlagTimer(match);
+    }
+  }
+
+  /**
+   * Schedule the flag check for the side whose clock is running. Re-armed on
+   * every action; fires just after the bank would empty, declares the
+   * timeout, and broadcasts the final state.
+   */
+  private armFlagTimer(match: Match): void {
+    this.cancelFlagTimer(match.id);
+    const msLeft = match.msUntilFlag();
+    if (msLeft === null) return;
+    this.flagTimers.set(
+      match.id,
+      setTimeout(() => {
+        const live = this.matches.get(match.id);
+        if (!live || !live.checkTimeout()) return;
+        this.sendMatchState(live);
+        this.finishMatch(live);
+      }, msLeft + 5),
+    );
+  }
+
+  private cancelFlagTimer(matchId: string): void {
+    const timer = this.flagTimers.get(matchId);
+    if (timer) {
+      clearTimeout(timer);
+      this.flagTimers.delete(matchId);
     }
   }
 
@@ -359,6 +462,7 @@ export class Lobby {
       }
       this.cancelAbandonTimer(id);
     }
+    this.cancelFlagTimer(match.id);
     this.matches.delete(match.id);
     this.persist(); // ratings + history changed
   }
@@ -375,6 +479,162 @@ export class Lobby {
         rating: state.rating,
         gamesPlayed: state.gamesPlayed,
       }));
+  }
+
+  // -------------------------------------------------------------------------
+  // Private rooms
+  // -------------------------------------------------------------------------
+
+  private handleRoomCreate(player: Player): void {
+    if (player.matchId) {
+      this.sendError(player.id, 'illegal-action', 'You are already in a match.');
+      return;
+    }
+    this.leaveRoom(player); // at most one room at a time
+    this.removeFromQueue(player.id); // creating a room supersedes queueing
+
+    const room: Room = {
+      code: this.generateRoomCode(),
+      hostId: player.id,
+      seats: new Map([[player.id, null]]),
+    };
+    this.rooms.set(room.code, room);
+    player.roomCode = room.code;
+    this.broadcastRoomState(room);
+  }
+
+  private handleRoomJoin(player: Player, code: string): void {
+    if (player.matchId) {
+      this.sendError(player.id, 'illegal-action', 'You are already in a match.');
+      return;
+    }
+    const room = this.rooms.get(code);
+    if (!room) {
+      this.sendError(player.id, 'no-such-room', `No room with code ${code}.`);
+      return;
+    }
+    if (room.seats.has(player.id)) {
+      this.broadcastRoomState(room); // idempotent re-join (e.g. reconnect)
+      return;
+    }
+    if (room.seats.size >= ROOM_CAPACITY) {
+      this.sendError(player.id, 'room-full', 'That room is full.');
+      return;
+    }
+    this.leaveRoom(player);
+    this.removeFromQueue(player.id);
+    room.seats.set(player.id, null);
+    player.roomCode = room.code;
+    this.broadcastRoomState(room);
+  }
+
+  /** Claim a seat (or vacate with null). Distinct seats are enforced here. */
+  private handleRoomSeat(player: Player, seat: SeatAssignment | null): void {
+    const room = player.roomCode ? this.rooms.get(player.roomCode) : undefined;
+    if (!room) {
+      this.sendError(player.id, 'no-such-room', 'You are not in a room.');
+      return;
+    }
+    if (seat) {
+      const taken = [...room.seats.entries()].some(
+        ([id, s]) =>
+          id !== player.id &&
+          s !== null &&
+          s.color === seat.color &&
+          s.role === seat.role,
+      );
+      if (taken) {
+        this.sendError(player.id, 'seat-taken', 'That seat is already taken.');
+        return;
+      }
+    }
+    room.seats.set(player.id, seat);
+    this.broadcastRoomState(room);
+  }
+
+  private handleRoomStart(player: Player): void {
+    const room = player.roomCode ? this.rooms.get(player.roomCode) : undefined;
+    if (!room) {
+      this.sendError(player.id, 'no-such-room', 'You are not in a room.');
+      return;
+    }
+    if (room.hostId !== player.id) {
+      this.sendError(player.id, 'not-host', 'Only the host can start the match.');
+      return;
+    }
+
+    // All four seats must be claimed by connected members.
+    const seated = new Map<string, string>(); // "color-role" -> playerId
+    for (const [id, seat] of room.seats) {
+      if (!seat) continue;
+      if (!this.playersById.get(id)?.connected) {
+        this.sendError(player.id, 'room-not-ready', 'A seated player is disconnected.');
+        return;
+      }
+      seated.set(`${seat.color}-${seat.role}`, id);
+    }
+    if (seated.size < 4) {
+      this.sendError(player.id, 'room-not-ready', 'All four seats must be filled.');
+      return;
+    }
+
+    const seats: SeatPlan = {
+      w: { brain: seated.get(`w-${Role.Brain}`)!, hand: seated.get(`w-${Role.Hand}`)! },
+      b: { brain: seated.get(`b-${Role.Brain}`)!, hand: seated.get(`b-${Role.Hand}`)! },
+    };
+    // The room stays alive through the match so the group can rematch.
+    this.startMatch(seats);
+  }
+
+  /** Remove a player from their room (if any), promoting or dissolving. */
+  private leaveRoom(player: Player): void {
+    const room = player.roomCode ? this.rooms.get(player.roomCode) : undefined;
+    player.roomCode = null;
+    if (!room) return;
+
+    room.seats.delete(player.id);
+    if (room.seats.size === 0) {
+      this.rooms.delete(room.code);
+      return;
+    }
+    if (room.hostId === player.id) {
+      // Promote the earliest-joined remaining member.
+      room.hostId = room.seats.keys().next().value!;
+    }
+    this.broadcastRoomState(room);
+  }
+
+  private broadcastRoomState(room: Room): void {
+    const members: RoomMemberInfo[] = [...room.seats.entries()].map(
+      ([id, seat]) => {
+        const member = this.playersById.get(id)!;
+        return {
+          playerId: id,
+          name: member.name,
+          connected: member.connected,
+          seat,
+        };
+      },
+    );
+    const message: ServerMessage = {
+      type: 'room-state',
+      code: room.code,
+      hostId: room.hostId,
+      members,
+    };
+    for (const id of room.seats.keys()) {
+      this.send(id, message);
+    }
+  }
+
+  private generateRoomCode(): string {
+    for (;;) {
+      let code = '';
+      for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
+        code += ROOM_CODE_ALPHABET[Math.floor(Math.random() * ROOM_CODE_ALPHABET.length)];
+      }
+      if (!this.rooms.has(code)) return code;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -401,6 +661,7 @@ export class Lobby {
       snapshot: match.snapshot(),
       players: this.matchPlayers(match),
       outcome: match.outcome(),
+      clock: match.clockView(),
     };
     for (const id of onlyTo ?? seatPlanPlayers(match.seats)) {
       this.send(id, message);
@@ -440,6 +701,7 @@ export class Lobby {
       name: `Player-${id.slice(0, 4)}`,
       connected: true,
       matchId: null,
+      roomCode: null,
     };
     // NOTE: identities are retained for the process lifetime (Phase 2 is
     // memory-only); Phase 3 moves identity to the database.
