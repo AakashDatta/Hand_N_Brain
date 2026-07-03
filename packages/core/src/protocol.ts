@@ -61,6 +61,14 @@ export interface MatchOutcome {
   by: GameOverReason | 'resignation';
 }
 
+/** A member of a private room and the seat they have claimed, if any. */
+export interface RoomMemberInfo {
+  playerId: string;
+  name: string;
+  connected: boolean;
+  seat: SeatAssignment | null;
+}
+
 // ---------------------------------------------------------------------------
 // Client -> server
 // ---------------------------------------------------------------------------
@@ -82,7 +90,14 @@ export type ClientMessage =
     }
   | { type: 'resign'; matchId: string }
   | { type: 'get-leaderboard' }
-  | { type: 'get-profile' };
+  | { type: 'get-profile' }
+  /** Private rooms: create/join by code, claim a seat, start when full. */
+  | { type: 'room-create' }
+  | { type: 'room-join'; code: string }
+  | { type: 'room-seat'; color: Color; role: Role }
+  | { type: 'room-unseat' }
+  | { type: 'room-leave' }
+  | { type: 'room-start' };
 
 // ---------------------------------------------------------------------------
 // Server -> client
@@ -112,6 +127,13 @@ export type ServerMessage =
       snapshot: GameSnapshot;
       players: MatchPlayerInfo[];
       outcome: MatchOutcome | null;
+    }
+  | {
+      /** Full state of the private room a player is in; sent on every change. */
+      type: 'room-state';
+      code: string;
+      hostId: string;
+      members: RoomMemberInfo[];
     }
   | {
       type: 'player-connection';
@@ -146,7 +168,12 @@ export type ErrorCode =
   | 'not-in-match'
   | 'not-your-turn'
   | 'illegal-action'
-  | 'already-queued';
+  | 'already-queued'
+  | 'no-such-room'
+  | 'room-full'
+  | 'seat-taken'
+  | 'not-host'
+  | 'room-not-ready';
 
 // ---------------------------------------------------------------------------
 // Inbound validation
@@ -255,6 +282,23 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (!isNonEmptyString(value.matchId)) return null;
       return { type: 'resign', matchId: value.matchId };
     }
+    case 'room-create':
+      return { type: 'room-create' };
+    case 'room-join': {
+      const code = normalizeRoomCode(value.code);
+      return code ? { type: 'room-join', code } : null;
+    }
+    case 'room-seat': {
+      if (value.color !== 'w' && value.color !== 'b') return null;
+      if (value.role !== Role.Brain && value.role !== Role.Hand) return null;
+      return { type: 'room-seat', color: value.color, role: value.role };
+    }
+    case 'room-unseat':
+      return { type: 'room-unseat' };
+    case 'room-leave':
+      return { type: 'room-leave' };
+    case 'room-start':
+      return { type: 'room-start' };
     case 'get-leaderboard':
       return { type: 'get-leaderboard' };
     case 'get-profile':
@@ -262,4 +306,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     default:
       return null;
   }
+}
+
+/**
+ * Normalize a user-typed room code: uppercase, strip whitespace/dashes.
+ * Returns null unless the result is 4-8 characters of A-Z / 2-9.
+ */
+export function normalizeRoomCode(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const code = raw.toUpperCase().replace(/[\s-]/g, '');
+  return /^[A-Z2-9]{4,8}$/.test(code) ? code : null;
 }

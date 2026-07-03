@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import {
   Phase,
   Role,
+  normalizeRoomCode,
+  type Color,
   type LeaderboardEntry,
   type MatchHistoryEntry,
   type MatchPlayerInfo,
@@ -37,11 +39,13 @@ export function OnlineView({ onExit }: { onExit: () => void }) {
     );
   }
 
-  if (!state.match || !state.match.snapshot) {
-    return <QueueScreen online={online} onExit={onExit} />;
+  if (state.match && state.match.snapshot) {
+    return <OnlineMatch online={online} onExit={onExit} />;
   }
-
-  return <OnlineMatch online={online} onExit={onExit} />;
+  if (state.room) {
+    return <RoomScreen online={online} />;
+  }
+  return <QueueScreen online={online} onExit={onExit} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +149,8 @@ function QueueScreen({
 
       {state.lastError && <p className="error-text">{state.lastError}</p>}
 
+      <FriendsSection online={online} />
+
       <div className="boards">
         {state.leaderboard && (
           <>
@@ -212,6 +218,149 @@ function HistoryPanel({ history }: { history: MatchHistoryEntry[] }) {
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Private rooms
+// ---------------------------------------------------------------------------
+
+function FriendsSection({ online }: { online: ReturnType<typeof useOnlineGame> }) {
+  const [draftCode, setDraftCode] = useState('');
+
+  return (
+    <div className="setup__online">
+      <h2 className="setup__heading">Play with friends</h2>
+      <p className="panel__hint">
+        Create a private room and share its code — no queue needed.
+      </p>
+      <div className="friends-row">
+        <button type="button" className="primary-button" onClick={online.createRoom}>
+          Create room
+        </button>
+        <span className="name-row">
+          <input
+            type="text"
+            placeholder="Room code"
+            value={draftCode}
+            maxLength={8}
+            onChange={(e) => setDraftCode(e.target.value.toUpperCase())}
+          />
+          <button
+            type="button"
+            className="link-button"
+            disabled={normalizeRoomCode(draftCode) === null}
+            onClick={() => {
+              const code = normalizeRoomCode(draftCode);
+              if (code) online.joinRoom(code);
+            }}
+          >
+            Join
+          </button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const SEAT_ORDER: { color: Color; role: Role; label: string }[] = [
+  { color: 'w', role: Role.Brain, label: 'White Brain' },
+  { color: 'w', role: Role.Hand, label: 'White Hand' },
+  { color: 'b', role: Role.Brain, label: 'Black Brain' },
+  { color: 'b', role: Role.Hand, label: 'Black Hand' },
+];
+
+function RoomScreen({ online }: { online: ReturnType<typeof useOnlineGame> }) {
+  const { state } = online;
+  const room = state.room!;
+  const iAmHost = room.hostId === state.playerId;
+  const mySeat =
+    room.members.find((m) => m.playerId === state.playerId)?.seat ?? null;
+
+  const occupant = (color: Color, role: Role) =>
+    room.members.find(
+      (m) => m.seat !== null && m.seat.color === color && m.seat.role === role,
+    );
+  const seatedCount = room.members.filter((m) => m.seat !== null).length;
+
+  return (
+    <div className="setup">
+      <h2 className="setup__heading">Private room</h2>
+      <p className="room-code">
+        Code: <strong>{room.code}</strong>
+      </p>
+      <p className="panel__hint">
+        Share the code with three friends. Everyone picks a seat; the host
+        starts the match. After a game you all land back here for a rematch.
+      </p>
+
+      <div className="seat-grid">
+        {SEAT_ORDER.map(({ color, role, label }) => {
+          const holder = occupant(color, role);
+          const isMine =
+            mySeat !== null && mySeat.color === color && mySeat.role === role;
+          return (
+            <button
+              key={label}
+              type="button"
+              className={`seat-card${isMine ? ' seat-card--mine' : ''}`}
+              disabled={holder !== undefined && !isMine}
+              onClick={() =>
+                isMine ? online.unseat() : online.claimSeat(color, role)
+              }
+            >
+              <span className="seat-card__label">{label}</span>
+              <span className="seat-card__holder">
+                {holder
+                  ? `${holder.name}${holder.playerId === state.playerId ? ' (you)' : ''}${holder.connected ? '' : ' — offline'}`
+                  : 'Take seat'}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="panel">
+        <h2 className="panel__title">In the room</h2>
+        <ul className="board-list">
+          {room.members.map((m) => (
+            <li key={m.playerId}>
+              <span className="board-list__name">
+                {m.name}
+                {m.playerId === room.hostId ? ' (host)' : ''}
+                {m.playerId === state.playerId ? ' (you)' : ''}
+              </span>
+              <span className="board-list__rating">
+                {m.connected ? (m.seat ? 'seated' : 'picking…') : 'offline'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {state.lastError && <p className="error-text">{state.lastError}</p>}
+
+      <div className="panel__actions room-actions">
+        {iAmHost && (
+          <button
+            type="button"
+            className="primary-button"
+            disabled={seatedCount < 4}
+            onClick={online.startRoom}
+          >
+            {seatedCount < 4 ? `Start match (${seatedCount}/4 seated)` : 'Start match'}
+          </button>
+        )}
+        {!iAmHost && (
+          <span className="panel__hint">
+            Waiting for the host to start ({seatedCount}/4 seated)…
+          </span>
+        )}
+        <button type="button" className="link-button" onClick={online.leaveRoom}>
+          Leave room
+        </button>
+      </div>
     </div>
   );
 }
