@@ -1,2 +1,21 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# Editors
 /.idea
+.vscode/
+
 *.exe
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Stockfish WASM engine (staged from node_modules by scripts/copy-stockfish.mjs)
+/packages/web/public/engine/
+/public/engine/
+
+# Runtime persistence (server JSON store)
+/data/
+packages/server/data/
