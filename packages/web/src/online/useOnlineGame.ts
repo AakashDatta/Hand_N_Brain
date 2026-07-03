@@ -37,6 +37,8 @@ export interface OnlineState {
     outcome: MatchOutcome | null;
     /** Server clock snapshot plus local receipt time, for smooth countdown. */
     clock: (ClockView & { receivedAt: number }) | null;
+    /** The team with a pending draw offer, if any. */
+    drawOffer: Color | null;
   } | null;
   /** Most recent server-rejected action, for display. */
   lastError: string | null;
@@ -62,6 +64,8 @@ export interface OnlineController {
     promotion?: LegalMove['promotion'];
   }) => void;
   resign: () => void;
+  offerDraw: () => void;
+  respondDraw: (accept: boolean) => void;
   /** Dismiss a finished match and return to the queue screen. */
   leaveFinishedMatch: () => void;
   fetchLeaderboard: () => void;
@@ -144,6 +148,7 @@ export function useOnlineGame(initialName?: string): OnlineController {
               snapshot: prev.match?.snapshot ?? null,
               outcome: null,
               clock: null,
+              drawOffer: null,
             },
           }));
           return;
@@ -162,6 +167,7 @@ export function useOnlineGame(initialName?: string): OnlineController {
                 clock: message.clock
                   ? { ...message.clock, receivedAt: Date.now() }
                   : null,
+                drawOffer: message.drawOffer,
               },
             };
           });
@@ -275,6 +281,16 @@ export function useOnlineGame(initialName?: string): OnlineController {
         send((s) => {
           const matchId = state.match?.matchId;
           if (matchId) s.send({ type: 'resign', matchId });
+        }),
+      offerDraw: () =>
+        send((s) => {
+          const matchId = state.match?.matchId;
+          if (matchId) s.send({ type: 'offer-draw', matchId });
+        }),
+      respondDraw: (accept) =>
+        send((s) => {
+          const matchId = state.match?.matchId;
+          if (matchId) s.send({ type: 'respond-draw', matchId, accept });
         }),
       leaveFinishedMatch: () =>
         setState((prev) =>

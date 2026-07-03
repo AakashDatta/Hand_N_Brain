@@ -39,8 +39,11 @@ export interface ClockConfig {
 
 export class Match {
   readonly game = new HandBrainGame();
-  /** Resignation, abandonment forfeit, or timeout — set once, final. */
+  /** Resignation, abandonment forfeit, timeout, or agreement — final. */
   private terminalOverride: MatchOutcome | null = null;
+
+  /** The team with a pending draw offer, if any. */
+  drawOfferBy: Color | null = null;
 
   // Team clocks. Each team's Brain and Hand share one clock: it runs from
   // the moment their turn starts (Brain thinking included) until the Hand's
@@ -158,6 +161,7 @@ export class Match {
       throw toActionError(error);
     }
     this.settleClockAfterMove(mover, now);
+    this.drawOfferBy = null; // an offer only stands until the next move
   }
 
   /**
@@ -165,6 +169,46 @@ export class Match {
    * team chess). Resigning a finished match is rejected.
    */
   resign(playerId: string): void {
+    const seat = this.requireParticipant(playerId);
+    this.terminalOverride = {
+      winner: otherColor(seat.color),
+      by: 'resignation',
+    };
+  }
+
+  /**
+   * Offer a draw on the team's behalf. Offering while the other team's offer
+   * is pending seals the agreement.
+   */
+  offerDraw(playerId: string): void {
+    const seat = this.requireParticipant(playerId);
+    if (this.drawOfferBy === otherColor(seat.color)) {
+      this.agreeDraw();
+      return;
+    }
+    this.drawOfferBy = seat.color;
+  }
+
+  /** Accept or decline the other team's pending draw offer. */
+  respondDraw(playerId: string, accept: boolean): void {
+    const seat = this.requireParticipant(playerId);
+    if (this.drawOfferBy === null || this.drawOfferBy === seat.color) {
+      throw new MatchActionError('illegal-action', 'No draw offer to answer.');
+    }
+    if (accept) {
+      this.agreeDraw();
+    } else {
+      this.drawOfferBy = null;
+    }
+  }
+
+  private agreeDraw(): void {
+    this.drawOfferBy = null;
+    this.terminalOverride = { winner: null, by: 'agreement' };
+  }
+
+  /** The sender must be a participant in a live match. */
+  private requireParticipant(playerId: string): { color: Color; role: Role } {
     if (this.isFinished()) {
       throw new MatchActionError('illegal-action', 'The match is already over.');
     }
@@ -172,10 +216,7 @@ export class Match {
     if (!seat) {
       throw new MatchActionError('not-in-match', 'You are not in this match.');
     }
-    this.terminalOverride = {
-      winner: seat.color === 'w' ? 'b' : 'w',
-      by: 'resignation',
-    };
+    return seat;
   }
 
   /** Forfeit a team without a player action (e.g. abandonment timeout). */
@@ -212,6 +253,10 @@ export class Match {
       );
     }
   }
+}
+
+function otherColor(color: Color): Color {
+  return color === 'w' ? 'b' : 'w';
 }
 
 function toActionError(error: unknown): MatchActionError {

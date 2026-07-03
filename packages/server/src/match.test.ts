@@ -103,3 +103,57 @@ describe('outcomes', () => {
     expect(match.outcome()).toEqual({ winner: 'w', by: 'resignation' });
   });
 });
+
+describe('draw offers', () => {
+  it('offer then accept by the other team agrees a draw', () => {
+    const match = newMatch();
+    match.offerDraw('wh');
+    expect(match.drawOfferBy).toBe('w');
+    expect(match.isFinished()).toBe(false);
+
+    match.respondDraw('bb', true);
+    expect(match.outcome()).toEqual({ winner: null, by: 'agreement' });
+  });
+
+  it('decline clears the offer and play continues', () => {
+    const match = newMatch();
+    match.offerDraw('wb');
+    match.respondDraw('bh', false);
+    expect(match.drawOfferBy).toBeNull();
+    expect(match.isFinished()).toBe(false);
+    match.selectPieceType('wb', 'p');
+  });
+
+  it('a counter-offer while the other side has one pending seals the draw', () => {
+    const match = newMatch();
+    match.offerDraw('wh');
+    match.offerDraw('bh');
+    expect(match.outcome()).toEqual({ winner: null, by: 'agreement' });
+  });
+
+  it('your own team cannot answer its own offer', () => {
+    const match = newMatch();
+    match.offerDraw('wh');
+    expect(() => match.respondDraw('wb', true)).toThrow(
+      expect.objectContaining({ code: 'illegal-action' }),
+    );
+  });
+
+  it('a completed move expires the pending offer', () => {
+    const match = newMatch();
+    match.offerDraw('wh');
+    match.selectPieceType('wb', 'p');
+    match.selectMove('wh', { from: 'e2', to: 'e4' });
+    expect(match.drawOfferBy).toBeNull();
+    expect(() => match.respondDraw('bb', true)).toThrow(
+      expect.objectContaining({ code: 'illegal-action' }),
+    );
+  });
+
+  it('outsiders cannot offer or respond', () => {
+    const match = newMatch();
+    expect(() => match.offerDraw('intruder')).toThrow(
+      expect.objectContaining({ code: 'not-in-match' }),
+    );
+  });
+});

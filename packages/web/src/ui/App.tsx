@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { normalizeRoomCode } from '@hnb/core';
 import { Phase, Role } from '@hnb/core';
 import { actorFor, humanPerspective, type GameConfig } from '../game/seats';
 import { useHandBrainGame } from './useHandBrainGame';
@@ -19,8 +20,25 @@ type Screen =
  * with AI seats) or online. Local games are remounted (via key) for every new
  * game so engine and AI state always start fresh.
  */
+/** A ?room=CODE invite link drops the visitor straight into online play. */
+function inviteCodeFromUrl(): string | null {
+  const code = normalizeRoomCode(
+    new URLSearchParams(window.location.search).get('room'),
+  );
+  if (code) {
+    // Strip the param so leaving the room doesn't re-trigger the invite.
+    const url = new URL(window.location.href);
+    url.searchParams.delete('room');
+    window.history.replaceState(null, '', url);
+  }
+  return code;
+}
+
 export function App() {
-  const [screen, setScreen] = useState<Screen>({ kind: 'setup' });
+  const [inviteCode] = useState(inviteCodeFromUrl);
+  const [screen, setScreen] = useState<Screen>(
+    inviteCode ? { kind: 'online' } : { kind: 'setup' },
+  );
 
   return (
     <div className="app">
@@ -48,7 +66,10 @@ export function App() {
         />
       )}
       {screen.kind === 'online' && (
-        <OnlineView onExit={() => setScreen({ kind: 'setup' })} />
+        <OnlineView
+          autoJoinCode={inviteCode}
+          onExit={() => setScreen({ kind: 'setup' })}
+        />
       )}
     </div>
   );

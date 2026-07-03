@@ -58,7 +58,7 @@ export interface MatchPlayerInfo {
  *  outcomes that the chess position itself cannot express. */
 export interface MatchOutcome {
   winner: Color | null;
-  by: GameOverReason | 'resignation' | 'timeout';
+  by: GameOverReason | 'resignation' | 'timeout' | 'agreement';
 }
 
 /**
@@ -101,6 +101,9 @@ export type ClientMessage =
       promotion?: Exclude<PieceType, 'p' | 'k'>;
     }
   | { type: 'resign'; matchId: string }
+  /** Draw negotiation: either team member acts on the team's behalf. */
+  | { type: 'offer-draw'; matchId: string }
+  | { type: 'respond-draw'; matchId: string; accept: boolean }
   | { type: 'get-leaderboard' }
   | { type: 'get-profile' }
   /** Private rooms: create/join by code, claim a seat, start when full. */
@@ -141,6 +144,8 @@ export type ServerMessage =
       outcome: MatchOutcome | null;
       /** Team clocks, or null for an untimed match. */
       clock: ClockView | null;
+      /** The team with a pending draw offer, if any. */
+      drawOffer: Color | null;
     }
   | {
       /** Full state of the private room a player is in; sent on every change. */
@@ -295,6 +300,15 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case 'resign': {
       if (!isNonEmptyString(value.matchId)) return null;
       return { type: 'resign', matchId: value.matchId };
+    }
+    case 'offer-draw': {
+      if (!isNonEmptyString(value.matchId)) return null;
+      return { type: 'offer-draw', matchId: value.matchId };
+    }
+    case 'respond-draw': {
+      if (!isNonEmptyString(value.matchId)) return null;
+      if (typeof value.accept !== 'boolean') return null;
+      return { type: 'respond-draw', matchId: value.matchId, accept: value.accept };
     }
     case 'room-create':
       return { type: 'room-create' };

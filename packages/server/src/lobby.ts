@@ -275,6 +275,16 @@ export class Lobby {
           match.resign(player.id),
         );
         return;
+      case 'offer-draw':
+        this.handleGameAction(player, message.matchId, (match) =>
+          match.offerDraw(player.id),
+        );
+        return;
+      case 'respond-draw':
+        this.handleGameAction(player, message.matchId, (match) =>
+          match.respondDraw(player.id, message.accept),
+        );
+        return;
       case 'room-create':
         this.handleRoomCreate(player);
         return;
@@ -662,6 +672,7 @@ export class Lobby {
       players: this.matchPlayers(match),
       outcome: match.outcome(),
       clock: match.clockView(),
+      drawOffer: match.drawOfferBy,
     };
     for (const id of onlyTo ?? seatPlanPlayers(match.seats)) {
       this.send(id, message);

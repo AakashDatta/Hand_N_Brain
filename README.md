@@ -39,9 +39,13 @@ any mix with Stockfish — *You vs AI*, *AI Brain teammate* (it announces a
 type, you pick the move — diverging from its idea is the fun), *AI Hand
 teammate* (you name types, it moves).
 
-**Online**: queue as Hand, Brain, or either; the server forms 2v2 teams of
-similar strength, validates every action, survives refreshes/reconnects, and
-rates each finished game on your two independent role ratings.
+**Online**: play with friends in a **private room** — create one, share the
+invite link or 5-letter code, pick seats, and the host starts (the room
+survives each game for instant rematches). Or queue as Hand, Brain, or either
+and let the server form 2v2 teams of similar strength. Every action is
+server-validated; matches run under a **5+3 team clock** (Brain thinking
+counts!) with server-side flag detection; draw offers, resignation,
+refresh/reconnect handling, and dual Hand/Brain Elo ratings round it out.
 
 ## Architecture
 
